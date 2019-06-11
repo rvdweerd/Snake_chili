@@ -23,6 +23,7 @@
 #include "SpriteCodex.h"
 
 
+
 Game::Game( MainWindow& wnd )
 	:
 	wnd( wnd ),
@@ -46,6 +47,7 @@ void Game::Go()
 
 void Game::UpdateModel()
 {
+	float dt = frmTime.Mark();
 	if (isStarted)
 	{
 		//Control direction of snake
@@ -54,15 +56,15 @@ void Game::UpdateModel()
 		if (wnd.kbd.KeyIsPressed(0x62))	{snk.SetSnakeVelocity( { 0, 1} );} // move down
 		if (wnd.kbd.KeyIsPressed(0x68))	{snk.SetSnakeVelocity( { 0,-1} );} // move up
 		//Adjust speed / stall
-		if (wnd.kbd.KeyIsPressed(0x61)) {snkAcceleration = 1;} // slower
-		if (wnd.kbd.KeyIsPressed(0x67)) {snkAcceleration =-1;} // faster
+		if (wnd.kbd.KeyIsPressed(0x61)) { snkMovePeriod *= 1.05f; }//{snkAcceleration = 1;} // slower
+		if (wnd.kbd.KeyIsPressed(0x67)) { snkMovePeriod /= 1.05f; }//{snkAcceleration =-1;} // faster
 		if (wnd.kbd.KeyIsPressed(0x69)) {snk.SetSnakeVelocity( { 0,0 } );} // stall
 		//Jump
 		if (wnd.kbd.KeyIsPressed(0x65)) {snk.JumpOn();} //jump
 
 		if (!gameOver)
 		{	
-			snkMoveCounter++;
+			snkMoveCounter+=dt;
 			if (snkMoveCounter >= snkMovePeriod)
 			{
 				const Location new_loc = snk.GetNextHeadLocation(snk.GetSnakeVelocity(), brd);
@@ -95,9 +97,9 @@ void Game::UpdateModel()
 				}
 				
 				//adjust speed and reset framecounter
-				snkMovePeriod += snkAcceleration;
+				//snkMovePeriod += snkAcceleration;
 				if (snkMovePeriod < 0) { snkMovePeriod = 0; }
-				snkAcceleration = 0;
+				//snkAcceleration = 0;
 				snkMoveCounter = 0;
 			}
 		}

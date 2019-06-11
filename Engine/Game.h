@@ -27,6 +27,7 @@
 #include <random>
 #include "Snake.h"
 #include "Goal.h"
+#include "FrameTimer.h"
 
 class Game
 {
@@ -50,13 +51,14 @@ private:
 	/*  User Variables              */
 	Board brd;//init
 	std::mt19937 rng;//init
+	FrameTimer frmTime;
 	Snake snk;//init
 	Barriers barriers;
 	bool gameOver = false;
 	bool isStarted = false;
 	int snkAcceleration = 0;
-	int snkMovePeriod = 8;
-	int snkMoveCounter = 0;
+	float snkMovePeriod = 0.5f; // timestep in seconds
+	float snkMoveCounter = 0.0f;
 	std::uniform_int_distribution<int> xDistr;//init
 	std::uniform_int_distribution<int> yDistr;//init
 	Goal goal;//init
