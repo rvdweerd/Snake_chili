@@ -4,6 +4,12 @@
 class Location
 {
 public:
+	Location() = default;
+	Location(int x_in, int y_in)
+	{
+		x = x_in;
+		y = y_in;
+	}
 	bool operator==(const Location& rhs) const
 	{
 		return (x == rhs.x && y == rhs.y);

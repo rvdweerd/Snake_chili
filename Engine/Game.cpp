@@ -73,12 +73,14 @@ void Game::UpdateModel()
 				{
 					snk.Grow(rng);
 					goal.ReSpawn(GetFreeBoardPosition());
-					barriers.Add(GetFreeBoardPosition());
+					//barriers.Add(GetFreeBoardPosition());
+					brd.SpawnNewBarrier(rng, snk, goal);
 				}
 
 				//Hard game over conditions (any of these cases)
 				if	( snk.IsInTileExceptEnd(new_loc) &&  snk.IsMoving() ||	//snake eats itself
-					  barriers.IsHit(new_loc) )						//snake hits a barrier
+					  //barriers.IsHit(new_loc) )						//snake hits a barrier
+					  brd.CellContainsBarrier(new_loc) )
 				{
 					gameOver = true;
 				}
@@ -98,7 +100,10 @@ void Game::UpdateModel()
 				
 				//adjust speed and reset framecounter
 				//snkMovePeriod += snkAcceleration;
-				if (snkMovePeriod < 0) { snkMovePeriod = 0; }
+				if (snkMovePeriod < 0) 
+				{ 
+					snkMovePeriod = 0; 
+				}
 				//snkAcceleration = 0;
 				snkMoveCounter = 0;
 			}
@@ -127,7 +132,8 @@ Location Game::GetFreeBoardPosition()
 		m_loc.x = xDistr(rng);
 		m_loc.y = yDistr(rng);
 	} 
-	while ( snk.IsInTileExceptEnd(m_loc) || barriers.IsInBarrier(m_loc) || m_loc == goal.GetLocation() );
+	//while ( snk.IsInTileExceptEnd(m_loc) || barriers.IsInBarrier(m_loc) || m_loc == goal.GetLocation() );
+	while (snk.IsInTileExceptEnd(m_loc) || brd.CellContainsBarrier(m_loc) || m_loc == goal.GetLocation());
 	// generate random location that is NOT: on the snake, on a barrier, on the goal.
 
 	return m_loc;
@@ -141,7 +147,8 @@ void Game::ComposeFrame()
 	{
 		goal.Draw(brd);
 		brd.DrawBorders();
-		barriers.Draw(brd);
+		brd.DrawBarriers();
+		//barriers.Draw(brd);
 		snk.Draw(brd);
 		
 	} 
