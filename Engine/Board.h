@@ -16,8 +16,10 @@ public:
 	static constexpr int height = 25;
 	bool IsInsideBoard( const Location& loc) const;
 	void SpawnNewBarrier(std::mt19937 rng, class Snake& snk, class Goal& goal);
+	bool CellContainsPoison(Location loc);
 	bool CellContainsBarrier(Location loc);
 	void DrawBarriers();
+	void DrawPoison();
 
 private:
 	static constexpr int dimension=20;
@@ -25,5 +27,8 @@ private:
 	static constexpr int cellPadding = 1;
 	Graphics& gfx;
 	bool BarrierArray[width * height] = { false };
+public:
+	bool PoisonArray[width * height] = { false };
 	static constexpr Color BarrierColor = Colors::White;
+	static constexpr Color PoisonColor = Colors::Magenta;
 };

@@ -35,6 +35,16 @@ Game::Game( MainWindow& wnd )
 	yDistr(0, Board::height - 1),
 	goal( {xDistr(rng) , yDistr(rng)} )
 {
+	std::uniform_int_distribution<int> chanceDistr(0, 100);
+	int poisonFillPercentage = 20;
+	for (int i = 0; i < brd.height * brd.width; i++)
+	{
+		if (chanceDistr(rng) <= poisonFillPercentage)
+		{
+			brd.PoisonArray[i] = true;
+		}
+
+	}
 }
 
 void Game::Go()
@@ -76,6 +86,14 @@ void Game::UpdateModel()
 					//barriers.Add(GetFreeBoardPosition());
 					brd.SpawnNewBarrier(rng, snk, goal);
 				}
+
+				//Speed up if Snek eats poison
+				if (brd.CellContainsPoison(new_loc))
+				{
+					brd.PoisonArray[new_loc.y * brd.width + new_loc.x] = false;
+					snkMovePeriod /= 1.05f;
+				}
+
 
 				//Hard game over conditions (any of these cases)
 				if	( snk.IsInTileExceptEnd(new_loc) &&  snk.IsMoving() ||	//snake eats itself
@@ -145,9 +163,11 @@ void Game::ComposeFrame()
 {
 	if (isStarted)
 	{
+		brd.DrawPoison();
 		goal.Draw(brd);
 		brd.DrawBorders();
 		brd.DrawBarriers();
+
 		//barriers.Draw(brd);
 		snk.Draw(brd);
 		

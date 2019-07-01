@@ -68,6 +68,11 @@ bool Board::CellContainsBarrier(Location loc)
 	return BarrierArray[loc.y * width + loc.x ];
 }
 
+bool Board::CellContainsPoison(Location loc)
+{
+	return PoisonArray[loc.y * width + loc.x];
+}
+
 void Board::DrawBarriers()
 {
 	for (int i = 0; i < width * height; i++)
@@ -79,3 +84,13 @@ void Board::DrawBarriers()
 	}
 }
 
+void Board::DrawPoison()
+{
+	for (int i = 0; i < width * height; i++)
+	{
+		if (PoisonArray[i])
+		{
+			DrawCell(Location(i % (width), (i - i % (width)) / (width)), PoisonColor);
+		}
+	}
+}
