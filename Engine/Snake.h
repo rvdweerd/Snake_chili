@@ -8,7 +8,6 @@ private:
 	class Segment
 	{
 	public:
-		
 		Segment();
 		void InitHead(const Location& in_loc);
 		void Follow(const Segment& segmentNext);
@@ -23,6 +22,7 @@ public:
 	void MoveTo(const Location& new_loc);
 	void Grow(std::mt19937& rng);
 	bool IsInTileExceptEnd(const Location& target) const;
+	bool Snake::IsInTile(const Location& target) const;
 	void Reset();
 	void JumpOn();
 	void JumpOff();

@@ -31,14 +31,15 @@ Game::Game( MainWindow& wnd )
 	brd( gfx ),
 	rng(std::random_device()() ),
 	snk({0,0},1,rng),
-	xDistr(0, Board::width - 1),
-	yDistr(0, Board::height - 1),
-	goal( {xDistr(rng) , yDistr(rng)} )
+	xDistr(0, Board::GetWidth() - 1),
+	yDistr(0, Board::GetHeight() - 1)
 {
-	//brd.FillBoardWithPoison(rng, 20);
-	brd.Spawn(2, rng, snk, Board::width * Board::height * 90 / 100);
-	brd.Spawn(1, rng, snk , 1); //1=food, 1x
-		
+	int coveragePercentage = 90;
+	int nPoison = Board::GetWidth() * Board::GetHeight() * coveragePercentage / 100;
+	
+	brd.Spawn(Board::contentType::food, rng, snk, 1);			
+	brd.Spawn(Board::contentType::poison, rng, snk, nPoison);	
+	brd.Spawn(Board::contentType::barrier, rng, snk, 0);		
 }
 
 void Game::Go()
@@ -55,16 +56,16 @@ void Game::UpdateModel()
 	if (isStarted)
 	{
 		//Control direction of snake
-		if (wnd.kbd.KeyIsPressed(0x66))	{snk.SetSnakeVelocity( { 1, 0} );} // move right
-		if (wnd.kbd.KeyIsPressed(0x64))	{snk.SetSnakeVelocity( {-1, 0} );} // move left
-		if (wnd.kbd.KeyIsPressed(0x62))	{snk.SetSnakeVelocity( { 0, 1} );} // move down
-		if (wnd.kbd.KeyIsPressed(0x68))	{snk.SetSnakeVelocity( { 0,-1} );} // move up
-		//Adjust speed / stall
-		if (wnd.kbd.KeyIsPressed(0x61)) { snkMovePeriod *= 1.05f; }//{snkAcceleration = 1;} // slower
-		if (wnd.kbd.KeyIsPressed(0x67)) { snkMovePeriod /= 1.05f; }//{snkAcceleration =-1;} // faster
-		if (wnd.kbd.KeyIsPressed(0x69)) {snk.SetSnakeVelocity( { 0,0 } );} // stall
+		if (wnd.kbd.KeyIsPressed(0x66))	{ snk.SetSnakeVelocity( { 1, 0} );}	// move right
+		if (wnd.kbd.KeyIsPressed(0x64))	{ snk.SetSnakeVelocity( {-1, 0} );}	// move left
+		if (wnd.kbd.KeyIsPressed(0x62))	{ snk.SetSnakeVelocity( { 0, 1} );}	// move down
+		if (wnd.kbd.KeyIsPressed(0x68))	{ snk.SetSnakeVelocity( { 0,-1} );}	// move up
+		//Adjust speed 
+		if (wnd.kbd.KeyIsPressed(0x61)) { snkMovePeriod *= 1.05f; }			// slower
+		if (wnd.kbd.KeyIsPressed(0x67)) { snkMovePeriod /= 1.05f; }			// faster
+		if (wnd.kbd.KeyIsPressed(0x69)) { snk.SetSnakeVelocity( { 0,0 } );}	// stall
 		//Jump
-		if (wnd.kbd.KeyIsPressed(0x65)) {snk.JumpOn();} //jump
+		if (wnd.kbd.KeyIsPressed(0x65)) { snk.JumpOn();}						//jump
 
 		if (!gameOver)
 		{	
@@ -72,28 +73,26 @@ void Game::UpdateModel()
 			if (snkMoveCounter >= snkMovePeriod)
 			{
 				const Location new_loc = snk.GetNextHeadLocation(snk.GetSnakeVelocity(), brd);
-				//grow if eats goal/food (code 1)
-				if (brd.GetCellContent(new_loc) == 1)
+		
+				//grow if eats food
+				if (brd.GetCellContent(new_loc) == Board::contentType::food)
 				{
 					snk.Grow(rng);
-					brd.Spawn(1,rng,snk,1); // 1=food, n=1
-					//barriers.Add(GetFreeBoardPosition());
-					brd.Spawn(3,rng, snk, 1); // 3=barrier, n=1
-					brd.SetCellContent(new_loc, 0);
+					brd.Spawn(Board::contentType::food    , rng , snk , 1); 
+					brd.Spawn(Board::contentType::barrier , rng , snk , 1); 
+					brd.SetCellContent(new_loc, Board::contentType::empty);
 				}
 
-				//Speed up if Snek eats poison
-				if (brd.GetCellContent(new_loc) == 2) // 2=poison
+				//speed up if eats poison
+				if (brd.GetCellContent(new_loc) == Board::contentType::poison) 
 				{
-					brd.SetCellContent(new_loc, 0);
+					brd.SetCellContent(new_loc, Board::contentType::empty);
 					snkMovePeriod /= 1.05f;
 				}
 
-
-				//Hard game over conditions (any of these cases)
-				if	( snk.IsInTileExceptEnd(new_loc) &&  snk.IsMoving() ||	//snake eats itself
-					  //barriers.IsHit(new_loc) )						//snake hits a barrier
-					  brd.GetCellContent(new_loc) == 3) // 3=barrier
+				//game over conditions
+				if	( snk.IsInTileExceptEnd(new_loc) &&  snk.IsMoving() ||			// snake eats itself
+					  brd.GetCellContent(new_loc) == Board::contentType::barrier)	// snake hits barrier
 				{
 					gameOver = true;
 				}
@@ -111,13 +110,7 @@ void Game::UpdateModel()
 					snk.JumpOff();
 				}
 				
-				//adjust speed and reset framecounter
-				//snkMovePeriod += snkAcceleration;
-				if (snkMovePeriod < 0) 
-				{ 
-					snkMovePeriod = 0; 
-				}
-				//snkAcceleration = 0;
+				//reset framecounter
 				snkMoveCounter = 0;
 			}
 		}
@@ -130,42 +123,17 @@ void Game::UpdateModel()
 			isStarted = true;
 			gameOver = false;
 			//snk.Reset();
-			//barriers.Reset();
 		}
 	}
-
-
-}
-
-Location Game::GetFreeBoardPosition()
-{
-	Location m_loc;
-	do
-	{
-		m_loc.x = xDistr(rng);
-		m_loc.y = yDistr(rng);
-	} 
-	//while ( snk.IsInTileExceptEnd(m_loc) || barriers.IsInBarrier(m_loc) || m_loc == goal.GetLocation() );
-	while (snk.IsInTileExceptEnd(m_loc) || brd.CellContainsBarrier(m_loc) || m_loc == goal.GetLocation());
-	// generate random location that is NOT: on the snake, on a barrier, on the goal.
-
-	return m_loc;
-
-
 }
 
 void Game::ComposeFrame()
 {
 	if (isStarted)
 	{
-		//brd.DrawPoison();
-		//goal.Draw(brd);
 		brd.DrawBorders();
-		//brd.DrawBarriers();
 		brd.DrawCellContents();
-		//barriers.Draw(brd);
 		snk.Draw(brd);
-		
 	} 
 	else
 	{

@@ -1,7 +1,6 @@
 #include "Snake.h"
 #include <assert.h>
 #include "Colors.h"
-//#include "Board.h"
 
 Snake::Snake(const Location& startloc, const int size0, std::mt19937& rng)
 	: 
@@ -63,6 +62,18 @@ bool Snake::IsInTileExceptEnd(const Location& target) const
 	return false;
 }
 
+bool Snake::IsInTile(const Location& target) const
+{
+	for (int i = 0; i < nSegments ; i++)
+	{
+		if (segments[i].loc == target)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 void Snake::Reset()
 {
 	nSegments = 1;
@@ -95,19 +106,19 @@ Location Snake::GetNextHeadLocation(const Location& delta, Board& brd) const
 
 	if (new_loc.x < 0)
 	{
-		new_loc.x = new_loc.x + brd.width;
+		new_loc.x = new_loc.x + brd.GetWidth();
 	}
-	else if (new_loc.x >= brd.width)
+	else if (new_loc.x >= brd.GetWidth())
 	{
-		new_loc.x = new_loc.x - brd.width;
+		new_loc.x = new_loc.x - brd.GetWidth();
 	}
 	else if (new_loc.y < 0)
 	{
-		new_loc.y = new_loc.y + brd.height;
+		new_loc.y = new_loc.y + brd.GetHeight();
 	}
-	else if (new_loc.y >= brd.height)
+	else if (new_loc.y >= brd.GetHeight())
 	{
-		new_loc.y = new_loc.y - brd.height;
+		new_loc.y = new_loc.y - brd.GetHeight();
 	}
 	return new_loc;
 }

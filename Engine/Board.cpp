@@ -2,7 +2,7 @@
 #include <assert.h>
 #include "Location.h"
 #include "Snake.h"
-#include "Goal.h"
+
 
 Board::Board(Graphics & gfx_in)
 	 :
@@ -40,20 +40,16 @@ void Board::DrawCellContents()
 {
 	for (int i = 0; i < width * height; i++)
 	{
-		if (masterArray[i] == 2)
+		switch (masterArray[i]) 
 		{
-			DrawCell(Location(i % (width), (i - i % (width)) / (width)), poisonColor);
-		}
-		if (masterArray[i] == 1)
-		{
-			DrawCell(Location(i % (width), (i - i % (width)) / (width)), foodColor);
-		}
-		if (masterArray[i] == 3)
-		{
-			DrawCell(Location(i % (width), (i - i % (width)) / (width)), barrierColor);
+		case contentType::food : DrawCell(Location(i % (width), (i - i % (width)) / (width)), foodColor);
+			break;
+		case contentType::poison : DrawCell(Location(i % (width), (i - i % (width)) / (width)), poisonColor);
+			break;
+		case contentType::barrier : DrawCell(Location(i % (width), (i - i % (width)) / (width)), barrierColor);
+			break;
 		}
 	}
-
 }
 
 int Board::GetWidth()
@@ -71,28 +67,6 @@ bool Board::IsInsideBoard(const Location & loc) const
 	return (loc.x >=0 && loc.x <width) && (loc.y>=0 && loc.y < height);
 }
 
-void Board::SpawnNewBarrier(std::mt19937 rng, class Snake& snk, class Goal& goal)
-{
-	std::uniform_int_distribution<int> xDistr(0, Board::width - 1);
-	std::uniform_int_distribution<int> yDistr(0, Board::height - 1);
-	Location new_loc;
-	do
-	{
-		new_loc = Location(xDistr(rng), yDistr(rng));
-	} while (snk.IsInTileExceptEnd(new_loc) || goal.GetLocation()==new_loc || BarrierArray[ new_loc.y * width + new_loc.x ] == true);
-	BarrierArray[new_loc.y * width + new_loc.x] = true;
-}
-
-bool Board::CellContainsBarrier(Location loc)
-{
-	return BarrierArray[loc.y * width + loc.x ];
-}
-
-bool Board::CellContainsPoison(Location loc)
-{
-	return PoisonArray[loc.y * width + loc.x];
-}
-
 void Board::DrawBarriers()
 {
 	for (int i = 0; i < width * height; i++)
@@ -104,31 +78,7 @@ void Board::DrawBarriers()
 	}
 }
 
-void Board::DrawPoison()
-{
-	for (int i = 0; i < width * height; i++)
-	{
-		if (PoisonArray[i])
-		{
-			DrawCell(Location(i % (width), (i - i % (width)) / (width)), poisonColor);
-		}
-	}
-}
-
-void Board::FillBoardWithPoison(std::mt19937& rng, int poisonDensityPercentage)
-{
-	std::uniform_int_distribution<int> chanceDistr(0, 100);
-
-	for (int i = 0; i < height * width; i++)
-	{
-		if (chanceDistr(rng) <= poisonDensityPercentage)
-		{
-			masterArray[i] = 2; //2=poison
-		}
-	}
-}
-
-void Board::Spawn(int cellType, std::mt19937& rng, Snake& snk, int n)
+void Board::Spawn(contentType cellType, std::mt19937& rng, Snake& snk, int n)
 {
 	std::uniform_int_distribution<int> arrayDistr(0, width*height);
 	
@@ -138,17 +88,17 @@ void Board::Spawn(int cellType, std::mt19937& rng, Snake& snk, int n)
 		do
 		{
 			i = arrayDistr(rng);
-		} while (masterArray[i] > 0 || snk.IsInTileExceptEnd({ i % (width) , (i - i % (width)) / width }));
+		} while (masterArray[i] != contentType::empty || snk.IsInTile({ i % (width) , (i - i % (width)) / width }));
 		masterArray[i] = cellType;
 	}
 }
 
-int Board::GetCellContent(Location loc)
+Board::contentType Board::GetCellContent(Location loc)
 {
 	return masterArray[loc.y*width+loc.x];
 }
 
-void Board::SetCellContent(Location loc, int cellContent)
+void Board::SetCellContent(Location loc, contentType cellContent)
 {
 	masterArray[loc.y * width + loc.x] = cellContent;
 }

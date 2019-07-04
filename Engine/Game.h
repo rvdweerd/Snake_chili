@@ -26,7 +26,6 @@
 #include "Board.h"
 #include <random>
 #include "Snake.h"
-#include "Goal.h"
 #include "FrameTimer.h"
 
 class Game
@@ -41,26 +40,24 @@ private:
 	void UpdateModel();
 	/********************************/
 	/*  User Functions              */
-	Location GetFreeBoardPosition();
+	
 	/********************************/
 private:
 	MainWindow& wnd;//init
 	Graphics gfx;//init
 	/********************************/
 	/*  User Variables              */
-	Board brd;//init
-	std::mt19937 rng;//init
+	Board brd;
+	std::mt19937 rng;
 	FrameTimer frmTime;
-	Snake snk;//init
-	Barriers barriers;
+	Snake snk;
 	bool gameOver = false;
 	bool isStarted = false;
 	int snkAcceleration = 0;
 	float snkMovePeriod = 0.5f; // timestep in seconds
 	float snkMoveCounter = 0.0f;
-	std::uniform_int_distribution<int> xDistr;//init
-	std::uniform_int_distribution<int> yDistr;//init
-	Goal goal;//init
+	std::uniform_int_distribution<int> xDistr;
+	std::uniform_int_distribution<int> yDistr;
 	/********************************/
 	//std::random_device rd;
 	//std::mt19937 rng;
