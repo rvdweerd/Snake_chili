@@ -34,7 +34,7 @@ Game::Game( MainWindow& wnd )
 	xDistr(0, Board::GetWidth() - 1),
 	yDistr(0, Board::GetHeight() - 1)
 {
-	int coveragePercentage = 90;
+	int coveragePercentage = 25;
 	int nPoison = Board::GetWidth() * Board::GetHeight() * coveragePercentage / 100;
 	
 	brd.Spawn(Board::contentType::food, rng, snk, 1);			

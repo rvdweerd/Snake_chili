@@ -67,17 +67,6 @@ bool Board::IsInsideBoard(const Location & loc) const
 	return (loc.x >=0 && loc.x <width) && (loc.y>=0 && loc.y < height);
 }
 
-void Board::DrawBarriers()
-{
-	for (int i = 0; i < width * height; i++)
-	{
-		if (BarrierArray[i])
-		{
-			DrawCell(Location( i%(width) , (i-i%(width))/(width) ), barrierColor);
-		}
-	}
-}
-
 void Board::Spawn(contentType cellType, std::mt19937& rng, Snake& snk, int n)
 {
 	std::uniform_int_distribution<int> arrayDistr(0, width*height);
