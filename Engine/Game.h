@@ -43,7 +43,6 @@ private:
 	/*  User Functions              */
 	Location GetFreeBoardPosition();
 	/********************************/
-
 private:
 	MainWindow& wnd;//init
 	Graphics gfx;//init

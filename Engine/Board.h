@@ -10,6 +10,7 @@ public:
 	Board(Graphics& gfx_in);
 	void DrawCell(Location& loc, Color c);
 	void DrawBorders();
+	void DrawCellContents();
 	int GetWidth();
 	int GetHeight();
 	static constexpr int width = 35;
@@ -20,6 +21,11 @@ public:
 	bool CellContainsBarrier(Location loc);
 	void DrawBarriers();
 	void DrawPoison();
+	void FillBoardWithPoison(std::mt19937& rng, int poisonDensityPercentage);
+	void Spawn(int cellType, std::mt19937& rng, Snake& snk, int n);
+	int GetCellContent(Location loc);
+	void SetCellContent(Location loc, int cellContent);
+
 
 private:
 	static constexpr int dimension=20;
@@ -29,6 +35,9 @@ private:
 	bool BarrierArray[width * height] = { false };
 public:
 	bool PoisonArray[width * height] = { false };
-	static constexpr Color BarrierColor = Colors::White;
-	static constexpr Color PoisonColor = Colors::Magenta;
+	int masterArray[width * height] = { 0 };
+	// 0 = empty, 1=food, 2=poison, 3=barrier
+	static constexpr Color foodColor = Colors::Blue;
+	static constexpr Color barrierColor = Colors::White;
+	static constexpr Color poisonColor = Colors::Magenta;
 };

@@ -35,16 +35,10 @@ Game::Game( MainWindow& wnd )
 	yDistr(0, Board::height - 1),
 	goal( {xDistr(rng) , yDistr(rng)} )
 {
-	std::uniform_int_distribution<int> chanceDistr(0, 100);
-	int poisonFillPercentage = 20;
-	for (int i = 0; i < brd.height * brd.width; i++)
-	{
-		if (chanceDistr(rng) <= poisonFillPercentage)
-		{
-			brd.PoisonArray[i] = true;
-		}
-
-	}
+	//brd.FillBoardWithPoison(rng, 20);
+	brd.Spawn(2, rng, snk, Board::width * Board::height * 90 / 100);
+	brd.Spawn(1, rng, snk , 1); //1=food, 1x
+		
 }
 
 void Game::Go()
@@ -78,19 +72,20 @@ void Game::UpdateModel()
 			if (snkMoveCounter >= snkMovePeriod)
 			{
 				const Location new_loc = snk.GetNextHeadLocation(snk.GetSnakeVelocity(), brd);
-				//grow if eats goal
-				if (new_loc == goal.GetLocation())
+				//grow if eats goal/food (code 1)
+				if (brd.GetCellContent(new_loc) == 1)
 				{
 					snk.Grow(rng);
-					goal.ReSpawn(GetFreeBoardPosition());
+					brd.Spawn(1,rng,snk,1); // 1=food, n=1
 					//barriers.Add(GetFreeBoardPosition());
-					brd.SpawnNewBarrier(rng, snk, goal);
+					brd.Spawn(3,rng, snk, 1); // 3=barrier, n=1
+					brd.SetCellContent(new_loc, 0);
 				}
 
 				//Speed up if Snek eats poison
-				if (brd.CellContainsPoison(new_loc))
+				if (brd.GetCellContent(new_loc) == 2) // 2=poison
 				{
-					brd.PoisonArray[new_loc.y * brd.width + new_loc.x] = false;
+					brd.SetCellContent(new_loc, 0);
 					snkMovePeriod /= 1.05f;
 				}
 
@@ -98,7 +93,7 @@ void Game::UpdateModel()
 				//Hard game over conditions (any of these cases)
 				if	( snk.IsInTileExceptEnd(new_loc) &&  snk.IsMoving() ||	//snake eats itself
 					  //barriers.IsHit(new_loc) )						//snake hits a barrier
-					  brd.CellContainsBarrier(new_loc) )
+					  brd.GetCellContent(new_loc) == 3) // 3=barrier
 				{
 					gameOver = true;
 				}
@@ -163,11 +158,11 @@ void Game::ComposeFrame()
 {
 	if (isStarted)
 	{
-		brd.DrawPoison();
-		goal.Draw(brd);
+		//brd.DrawPoison();
+		//goal.Draw(brd);
 		brd.DrawBorders();
-		brd.DrawBarriers();
-
+		//brd.DrawBarriers();
+		brd.DrawCellContents();
 		//barriers.Draw(brd);
 		snk.Draw(brd);
 		
