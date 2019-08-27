@@ -28,18 +28,19 @@ Game::Game( MainWindow& wnd )
 	:
 	wnd( wnd ),
 	gfx( wnd ),
-	brd( gfx ),
+	brd( gfx, snk ),
 	rng(std::random_device()() ),
 	snk({0,0},1,rng),
-	xDistr(0, Board::GetWidth() - 1),
-	yDistr(0, Board::GetHeight() - 1)
+	xDistr(0, brd.GetWidth() - 1),
+	yDistr(0, brd.GetHeight() - 1)
 {
-	int coveragePercentage = 25;
-	int nPoison = Board::GetWidth() * Board::GetHeight() * coveragePercentage / 100;
+	//int coveragePercentage = 10;
+	//int nPoison = Board::GetWidth() * Board::GetHeight() * coveragePercentage / 100;
 	
-	brd.Spawn(Board::contentType::food, rng, snk, 1);			
-	brd.Spawn(Board::contentType::poison, rng, snk, nPoison);	
-	brd.Spawn(Board::contentType::barrier, rng, snk, 0);		
+
+	brd.Spawn(Board::contentType::food, rng,  std::max(1,gVar.foodAmount) );			
+	brd.Spawn(Board::contentType::poison, rng, gVar.poisonAmount );
+	brd.Spawn(Board::contentType::barrier, rng,  0);		
 }
 
 void Game::Go()
@@ -78,8 +79,8 @@ void Game::UpdateModel()
 				if (brd.GetCellContent(new_loc) == Board::contentType::food)
 				{
 					snk.Grow(rng);
-					brd.Spawn(Board::contentType::food    , rng , snk , 1); 
-					brd.Spawn(Board::contentType::barrier , rng , snk , 1); 
+					brd.Spawn(Board::contentType::food    , rng ,  1); 
+					brd.Spawn(Board::contentType::barrier , rng ,  1); 
 					brd.SetCellContent(new_loc, Board::contentType::empty);
 				}
 
@@ -87,7 +88,7 @@ void Game::UpdateModel()
 				if (brd.GetCellContent(new_loc) == Board::contentType::poison) 
 				{
 					brd.SetCellContent(new_loc, Board::contentType::empty);
-					snkMovePeriod /= 1.05f;
+					snkMovePeriod /= gVar.speedupRate;//1.05f;
 				}
 
 				//game over conditions

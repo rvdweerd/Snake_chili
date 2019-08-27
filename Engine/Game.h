@@ -27,6 +27,7 @@
 #include <random>
 #include "Snake.h"
 #include "FrameTimer.h"
+#include "GameVariables.h"
 
 class Game
 {
@@ -58,6 +59,7 @@ private:
 	float snkMoveCounter = 0.0f;
 	std::uniform_int_distribution<int> xDistr;
 	std::uniform_int_distribution<int> yDistr;
+	GameVariables gVar;
 	/********************************/
 	//std::random_device rd;
 	//std::mt19937 rng;

@@ -4,9 +4,10 @@
 #include "Snake.h"
 
 
-Board::Board(Graphics & gfx_in)
-	 :
-	 gfx(gfx_in)
+Board::Board(Graphics & gfx_in, Snake& snk_in)
+	:
+	gfx(gfx_in),
+	snk(snk_in)
 {
 }
 
@@ -52,12 +53,12 @@ void Board::DrawCellContents()
 	}
 }
 
-int Board::GetWidth()
+const int Board::GetWidth()
 {
 	return width;
 }
 
-int Board::GetHeight()
+const int Board::GetHeight()
 {
 	return height;
 }
@@ -67,7 +68,8 @@ bool Board::IsInsideBoard(const Location & loc) const
 	return (loc.x >=0 && loc.x <width) && (loc.y>=0 && loc.y < height);
 }
 
-void Board::Spawn(contentType cellType, std::mt19937& rng, Snake& snk, int n)
+//void Board::Spawn(contentType cellType, std::mt19937& rng, Snake& snk, int n)
+void Board::Spawn(contentType cellType, std::mt19937& rng, int n)
 {
 	std::uniform_int_distribution<int> arrayDistr(0, width*height);
 	
