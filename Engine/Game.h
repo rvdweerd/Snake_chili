@@ -48,18 +48,20 @@ private:
 	Graphics gfx;//init
 	/********************************/
 	/*  User Variables              */
-	Board brd;
+	GameVariables gVar = std::string("data.txt");
 	std::mt19937 rng;
-	FrameTimer frmTime;
 	Snake snk;
+	Board brd;
+
+	FrameTimer frmTime;
 	bool gameOver = false;
 	bool isStarted = false;
 	int snkAcceleration = 0;
-	float snkMovePeriod = 0.5f; // timestep in seconds
+	float snkMovePeriod; // timestep in seconds
 	float snkMoveCounter = 0.0f;
 	std::uniform_int_distribution<int> xDistr;
 	std::uniform_int_distribution<int> yDistr;
-	GameVariables gVar;
+
 	/********************************/
 	//std::random_device rd;
 	//std::mt19937 rng;

@@ -19,7 +19,11 @@ public:
 	static constexpr Color poisonColor = Colors::Magenta;
 
 public:
-	Board(Graphics& gfx_in, class Snake& snk_in);
+	Board() = default;
+	Board(Graphics& gfx_in, class Snake& snk_in, GameVariables& gVar);
+	~Board();
+	Board(const Board& ) = delete;
+	const Board& operator=(const Board& ) = delete;
 	void DrawCell(Location& loc, Color c);
 	void DrawBorders();
 	void DrawCellContents();
@@ -32,17 +36,16 @@ public:
 	void SetCellContent(Location loc, contentType cellContent);
 
 private:
-	GameVariables gVar;
-	const int dimension= gVar.tileSize;
+	int dimension;
 	const Location startPos = { 10,10 };
 	static constexpr int cellPadding = 1;
 	Graphics& gfx;
 	Snake& snk;
 	//static constexpr int width =  35;
-	int width = gVar.boardSizeX;
-	int height = gVar.boardSizeY;
+	int width;
+	int height;
 	
 	//contentType masterArray[width * height] = { contentType::empty };
-	contentType* masterArray = new contentType[width * height] { contentType::empty };
+	contentType* masterArray = nullptr;
 	
 };

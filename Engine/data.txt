@@ -1,7 +1,7 @@
 [Tile Size]
-5
+15
 [Board Size]
-150 100
+50 38
 x  y
 [Speedup Rate]
 1.05f
@@ -9,3 +9,7 @@ x  y
 4
 [Food Amount]
 10
+[Initial Speed]
+0.1f
+[Initial Snakelength]
+1

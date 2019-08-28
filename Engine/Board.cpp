@@ -4,11 +4,25 @@
 #include "Snake.h"
 
 
-Board::Board(Graphics & gfx_in, Snake& snk_in)
+Board::Board(Graphics & gfx_in, Snake& snk_in, GameVariables& gVar)
 	:
+	dimension(gVar.tileSize),
 	gfx(gfx_in),
-	snk(snk_in)
+	snk(snk_in),
+	width(gVar.boardSizeX),
+	height(gVar.boardSizeY),
+	masterArray(new contentType[width * height])// { contentType::empty } )
 {
+	for (contentType* pRunner = masterArray; pRunner < masterArray + width*height ; pRunner++)
+	{
+		*pRunner = contentType::empty;
+	}
+}
+
+Board::~Board()
+{
+	delete[] masterArray;
+	masterArray = nullptr;
 }
 
 void Board::DrawCell(Location& loc, Color c)

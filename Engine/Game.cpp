@@ -28,16 +28,17 @@ Game::Game( MainWindow& wnd )
 	:
 	wnd( wnd ),
 	gfx( wnd ),
-	brd( gfx, snk ),
+	//gVar(std::string("data.txt")),
 	rng(std::random_device()() ),
-	snk({0,0},1,rng),
+	snk({0,0},gVar.initialSnakelength,rng),
+	brd( gfx, snk , gVar),
 	xDistr(0, brd.GetWidth() - 1),
 	yDistr(0, brd.GetHeight() - 1)
 {
 	//int coveragePercentage = 10;
 	//int nPoison = Board::GetWidth() * Board::GetHeight() * coveragePercentage / 100;
 	
-
+	snkMovePeriod = gVar.initialSpeed;
 	brd.Spawn(Board::contentType::food, rng,  std::max(1,gVar.foodAmount) );			
 	brd.Spawn(Board::contentType::poison, rng, gVar.poisonAmount );
 	brd.Spawn(Board::contentType::barrier, rng,  0);		
