@@ -10,26 +10,12 @@ Board::Board(Graphics & gfx_in, Snake& snk_in, GameVariables& gVar)
 	gfx(gfx_in),
 	snk(snk_in),
 	width(gVar.boardSizeX),
-	height(gVar.boardSizeY)
-	//masterArray(new contentType[width * height])// { contentType::empty } )
+	height(gVar.boardSizeY),
+	masterArray(width * height, contentType::empty)// { contentType::empty } )
 {
-	/*for (contentType* pRunner = masterArray; pRunner < masterArray + width*height ; pRunner++)
-	{
-		*pRunner = contentType::empty;
-	}*/
-	for (int i = 0; i < width * height; i++)
-	{
-		masterArray.emplace_back(contentType::empty);
-	}
 }
 
-Board::~Board()
-{
-	//delete[] masterArray;
-	//masterArray = nullptr;
-}
-
-void Board::DrawCell(Location& loc, Color c)
+void Board::DrawCell(const Location& loc, Color c) const
 {
 	assert(loc.x < width);
 	assert(loc.x >= 0);

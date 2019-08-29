@@ -22,10 +22,7 @@ public:
 public:
 	Board() = default;
 	Board(Graphics& gfx_in, class Snake& snk_in, GameVariables& gVar);
-	~Board();
-	Board(const Board& ) = delete;
-	const Board& operator=(const Board& ) = delete;
-	void DrawCell(Location& loc, Color c);
+	void DrawCell(const Location& loc, Color c) const;
 	void DrawBorders();
 	void DrawCellContents();
 	const int GetWidth();

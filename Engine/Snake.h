@@ -10,9 +10,9 @@ private:
 	{
 	public:
 		Segment();
-		void InitHead(const Location& in_loc);
+		Segment(const Location& in_loc);
 		void Follow(const Segment& segmentNext);
-		void Draw(Board &brd);
+		void Draw(Board &brd) const;
 		Location loc;
 		Color color;
 	};
@@ -42,6 +42,5 @@ private:
 	int jumpMultiplier = 1;
 	//Segment segments[nSegmentsMax];
 	std::vector<Segment> segments;
-	int nSegments;
 	Location snakeVelocity;
 };

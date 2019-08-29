@@ -10,6 +10,6 @@ x  y
 [Food Amount]
 10
 [Initial Speed]
-0.1f
+0.5f
 [Initial Snakelength]
-1
+10
