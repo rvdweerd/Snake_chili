@@ -4,6 +4,7 @@
 #include "Colors.h"
 #include <random>
 #include "GameVariables.h"
+#include <vector>
 
 class Board
 {
@@ -46,6 +47,7 @@ private:
 	int height;
 	
 	//contentType masterArray[width * height] = { contentType::empty };
-	contentType* masterArray = nullptr;
+	//contentType* masterArray = nullptr;
+	std::vector<contentType> masterArray;
 	
 };

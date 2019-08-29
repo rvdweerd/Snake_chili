@@ -1,6 +1,7 @@
 #pragma once
 #include "Location.h"
 #include "Board.h"
+#include <vector>
 
 class Snake
 {
@@ -39,7 +40,8 @@ private:
 	static constexpr int nSegmentsMax = 2000;
 	static constexpr int growth = 1;
 	int jumpMultiplier = 1;
-	Segment segments[nSegmentsMax];
+	//Segment segments[nSegmentsMax];
+	std::vector<Segment> segments;
 	int nSegments;
 	Location snakeVelocity;
 };

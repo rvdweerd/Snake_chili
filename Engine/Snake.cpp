@@ -7,6 +7,7 @@ Snake::Snake(const Location& startloc, const int size0, std::mt19937& rng)
 	nSegments(size0),
 	snakeVelocity({1,0})
 {
+	segments.emplace_back(Segment{});
 	segments[0].InitHead(startloc);
 	std::uniform_int_distribution<int> colDistr(100, 255);
 	for (int i = 1; i < nSegments; i++)
@@ -41,8 +42,9 @@ void Snake::Grow(std::mt19937& rng)
 	std::uniform_int_distribution<int> colDistr(100, 255);
 	if (nSegments+growth < nSegmentsMax)
 	{
-		for (int i = nSegments; i <= nSegments+growth; i++)
+		for (int i = nSegments; i < nSegments+growth; i++)
 		{
+			segments.emplace_back(Segment{});
 			segments[i].Follow(segments[nSegments - 1]);
 			segments[i].color = Color(10, colDistr(rng), 10);
 		}
@@ -130,7 +132,11 @@ Location Snake::GetSnakeVelocity() const
 
 void Snake::SetSnakeVelocity(const Location new_velocity)
 {
-	if ( (segments[1].loc != segments[0].loc + new_velocity) || nSegments == 1 )
+	if ( nSegments == 1 )
+	{
+		snakeVelocity = new_velocity;
+	}
+	else if (segments[1].loc != segments[0].loc + new_velocity)
 	{
 		snakeVelocity = new_velocity;
 	}

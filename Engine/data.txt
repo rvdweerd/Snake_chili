@@ -6,7 +6,7 @@ x  y
 [Speedup Rate]
 1.05f
 [Poison Amount]
-4
+150
 [Food Amount]
 10
 [Initial Speed]
