@@ -21,8 +21,7 @@
 #include "MainWindow.h"
 #include "Game.h"
 #include "SpriteCodex.h"
-
-
+#include "NetworkManager.h"
 
 Game::Game(MainWindow& wnd)
 	:
@@ -44,6 +43,35 @@ Game::Game(MainWindow& wnd)
 	brd.Spawn(Board::contentType::food, rng, std::max(1, gVar.foodAmount));
 	brd.Spawn(Board::contentType::poison, rng, gVar.poisonAmount);
 	brd.Spawn(Board::contentType::barrier, rng, 0);
+
+	// Setup networking callbacks
+	networkMgr.SetOnConnected([this]() {
+		// Connection established
+		isNetworkHost = (networkMgr.GetRole() == NetworkRole::Host);
+		networkingEnabled = true;
+		gVar.numPlayers = 2; // Force 2 player mode when networked
+	});
+
+	networkMgr.SetOnInputReceived([this](const InputMessage& msg) {
+		// Received remote player input
+		ApplyRemoteInput(msg);
+	});
+
+	networkMgr.SetOnGameStateReceived([this](const GameStateSnapshot& state) {
+		// Received game state update (client only)
+		if (!isNetworkHost)
+		{
+			ApplyGameStateSnapshot(state);
+		}
+	});
+
+	networkMgr.SetOnDisconnected([this]() {
+		// Connection lost
+		networkingEnabled = false;
+	});
+
+	// Start network discovery
+	networkMgr.StartDiscovery();
 }
 
 void Game::Go()
@@ -57,8 +85,16 @@ void Game::Go()
 void Game::UpdateModel()
 {
 	float dt = frmTime.Mark();
+	
+	// Update networking
+	UpdateNetworking();
+
 	if (isStarted)
 	{
+		// In network mode, only host processes game logic
+		// Client only sends input and receives state updates
+		bool shouldProcessGameLogic = !networkingEnabled || isNetworkHost;
+
 		//Control direction of snake
 		if (wnd.kbd.KeyIsPressed(0x66))	{ snk1.SetSnakeVelocity( { 1, 0} );}	// move right
 		if (wnd.kbd.KeyIsPressed(0x64))	{ snk1.SetSnakeVelocity( {-1, 0} );}	// move left
@@ -71,22 +107,27 @@ void Game::UpdateModel()
 		//Jump
 		if (wnd.kbd.KeyIsPressed(0x65)) { snk1.JumpOn();}						//jump
 		
-		// Control second snake (if two players)
+		// Control second snake
 		if (gVar.numPlayers == 2)
 		{
-			if (wnd.kbd.KeyIsPressed('D')) { snk2.SetSnakeVelocity({ 1, 0 }); } // move right
-			if (wnd.kbd.KeyIsPressed('A')) { snk2.SetSnakeVelocity({ -1, 0 }); } // move left
-			if (wnd.kbd.KeyIsPressed('X')) { snk2.SetSnakeVelocity({ 0, 1 }); } // move down
-			if (wnd.kbd.KeyIsPressed('W')) { snk2.SetSnakeVelocity({ 0, -1 }); } // move up
-			if (wnd.kbd.KeyIsPressed('Z')) { snk2MovePeriod *= 1.05f; }			// slower
-			if (wnd.kbd.KeyIsPressed('Q')) { snk2MovePeriod /= 1.05f; }			// faster
-			if (wnd.kbd.KeyIsPressed('E')) { snk2.SetSnakeVelocity({0,0}); }	// stall
-			if (wnd.kbd.KeyIsPressed('S')) { snk2.JumpOn(); }
-
+			// If networked, client controls snake 2 locally, host receives input
+			bool isLocalSnake2 = !networkingEnabled || !isNetworkHost;
+			
+			if (isLocalSnake2)
+			{
+				if (wnd.kbd.KeyIsPressed('D')) { snk2.SetSnakeVelocity({ 1, 0 }); } // move right
+				if (wnd.kbd.KeyIsPressed('A')) { snk2.SetSnakeVelocity({ -1, 0 }); } // move left
+				if (wnd.kbd.KeyIsPressed('X')) { snk2.SetSnakeVelocity({ 0, 1 }); } // move down
+				if (wnd.kbd.KeyIsPressed('W')) { snk2.SetSnakeVelocity({ 0, -1 }); } // move up
+				if (wnd.kbd.KeyIsPressed('Z')) { snk2MovePeriod *= 1.05f; }			// slower
+				if (wnd.kbd.KeyIsPressed('Q')) { snk2MovePeriod /= 1.05f; }			// faster
+				if (wnd.kbd.KeyIsPressed('E')) { snk2.SetSnakeVelocity({0,0}); }	// stall
+				if (wnd.kbd.KeyIsPressed('S')) { snk2.JumpOn(); }
+			}
 		}
 
-
-		if (!gameOver)
+		// Game simulation (only run on host in network mode)
+		if (shouldProcessGameLogic && !gameOver)
 		{
 			snk1MoveCounter += dt;
 			if (gVar.numPlayers == 2)
@@ -266,4 +307,121 @@ void Game::ComposeFrame()
 	{
 		SpriteCodex::DrawGameOver(200, 200, gfx);
 	}
+}
+
+void Game::UpdateNetworking()
+{
+	if (!networkingEnabled)
+	{
+		return;
+	}
+
+	if (isNetworkHost)
+	{
+		// Host sends full game state periodically
+		networkSyncCounter += frmTime.Mark();
+		if (networkSyncCounter >= networkSyncPeriod)
+		{
+			GameStateSnapshot state = CreateGameStateSnapshot();
+			networkMgr.SendGameState(state);
+			networkSyncCounter = 0.0f;
+		}
+	}
+	else
+	{
+		// Client sends input when it changes
+		Location currentVel = snk2.GetSnakeVelocity();
+		if (currentVel.x != lastSentVelocity2.x || currentVel.y != lastSentVelocity2.y)
+		{
+			networkMgr.SendInput(currentVel.x, currentVel.y, false, snk2MovePeriod);
+			lastSentVelocity2 = currentVel;
+		}
+	}
+}
+
+void Game::ApplyRemoteInput(const InputMessage& msg)
+{
+	// Host receives client input and applies it to snake 2
+	if (isNetworkHost)
+	{
+		snk2.SetSnakeVelocity({ msg.vx, msg.vy });
+		snk2MovePeriod = msg.movePeriod;
+	}
+}
+
+void Game::ApplyGameStateSnapshot(const GameStateSnapshot& state)
+{
+	// Client applies received game state
+	player1Score = state.player1Score;
+	player2Score = state.player2Score;
+	gameOver = state.gameOver != 0;
+	crashedPlayer = state.crashedPlayer;
+
+	// Update snake 1
+	DeserializeSnake(snk1, state.snake1Segments, state.snake1SegmentCount, 
+					 state.snake1VelocityX, state.snake1VelocityY);
+	snk1MovePeriod = state.snake1MovePeriod;
+
+	// Update snake 2
+	DeserializeSnake(snk2, state.snake2Segments, state.snake2SegmentCount,
+					 state.snake2VelocityX, state.snake2VelocityY);
+	snk2MovePeriod = state.snake2MovePeriod;
+
+	// Update board contents (food, poison, barriers)
+	// Clear existing items first would require Board API changes
+	// For now, the host controls spawning and we rely on state sync
+}
+
+GameStateSnapshot Game::CreateGameStateSnapshot()
+{
+	GameStateSnapshot state{};
+	state.magic = 0; // Set by NetworkManager
+	state.sequence = 0; // Set by NetworkManager
+
+	// Serialize snakes
+	SerializeSnake(snk1, state.snake1Segments, state.snake1SegmentCount, 
+				   state.snake1VelocityX, state.snake1VelocityY);
+	state.snake1MovePeriod = snk1MovePeriod;
+
+	SerializeSnake(snk2, state.snake2Segments, state.snake2SegmentCount,
+				   state.snake2VelocityX, state.snake2VelocityY);
+	state.snake2MovePeriod = snk2MovePeriod;
+
+	// Game state
+	state.player1Score = player1Score;
+	state.player2Score = player2Score;
+	state.gameOver = gameOver ? 1 : 0;
+	state.crashedPlayer = crashedPlayer;
+
+	// Board state - for simplicity, we'll skip serializing all board contents
+	// The host controls spawning, so clients will see updates through snake interactions
+	state.foodCount = 0;
+	state.poisonCount = 0;
+	state.barrierCount = 0;
+
+	return state;
+}
+
+void Game::SerializeSnake(const Snake& snake, SnakeSegment* segments, uint16_t& count, int8_t& vx, int8_t& vy)
+{
+	Location vel = snake.GetSnakeVelocity();
+	vx = vel.x;
+	vy = vel.y;
+
+	// We need access to snake segments - this requires Snake API changes
+	// For now, we'll serialize just the head position
+	Location head = snake.GetCurrentHeadLocation();
+	count = 1;
+	segments[0].x = head.x;
+	segments[0].y = head.y;
+}
+
+void Game::DeserializeSnake(Snake& snake, const SnakeSegment* segments, uint16_t count, int8_t vx, int8_t vy)
+{
+	if (count > 0)
+	{
+		Location newHead = { segments[0].x, segments[0].y };
+		snake.MoveTo(newHead);
+	}
+	snake.SetSnakeVelocity({ vx, vy });
 }

@@ -28,6 +28,7 @@
 #include "Snake.h"
 #include "FrameTimer.h"
 #include "GameVariables.h"
+#include "NetworkManager.h"
 
 class Game
 {
@@ -41,7 +42,12 @@ private:
 	void UpdateModel();
 	/********************************/
 	/*  User Functions              */
-	
+	void UpdateNetworking();
+	void ApplyRemoteInput(const InputMessage& msg);
+	void ApplyGameStateSnapshot(const GameStateSnapshot& state);
+	GameStateSnapshot CreateGameStateSnapshot();
+	void SerializeSnake(const Snake& snake, SnakeSegment* segments, uint16_t& count, int8_t& vx, int8_t& vy);
+	void DeserializeSnake(Snake& snake, const SnakeSegment* segments, uint16_t count, int8_t vx, int8_t vy);
 	/********************************/
 private:
 	MainWindow& wnd;//init
@@ -69,6 +75,15 @@ private:
 	int player1Score = 0;
 	int player2Score = 0;
 	int crashedPlayer = 0; // 0 = no crash, 1 = player1 crashed, 2 = player2 crashed, 3 = both crashed
+
+	// Networking
+	NetworkManager networkMgr;
+	bool networkingEnabled = false;
+	bool isNetworkHost = false;
+	float networkSyncCounter = 0.0f;
+	static constexpr float networkSyncPeriod = 0.05f; // 20Hz sync rate
+	Location lastSentVelocity1 = {0, 0};
+	Location lastSentVelocity2 = {0, 0};
 	/********************************/
 	//std::random_device rd;
 	//std::mt19937 rng;

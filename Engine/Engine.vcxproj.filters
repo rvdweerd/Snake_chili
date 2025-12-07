@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Source Files">
@@ -65,6 +65,9 @@
     </ClInclude>
     <ClInclude Include="GameVariables.h">
       <Filter>Header Files</Filter>
+    </ClInclude>`r`n    <ClInclude Include="NetworkManager.h">`r`n      <Filter>Header Files</Filter>`r`n    </ClInclude>
+    <ClInclude Include="NetworkManager.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -99,6 +102,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="FrameTimer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>`r`n    <ClCompile Include="NetworkManager.cpp">`r`n      <Filter>Source Files</Filter>`r`n    </ClCompile>
+    <ClCompile Include="NetworkManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

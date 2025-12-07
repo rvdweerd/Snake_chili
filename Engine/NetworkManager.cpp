@@ -1,0 +1,402 @@
+#include "NetworkManager.h"
+#include <chrono>
+#include <iostream>
+
+struct NetworkManager::Impl
+{
+	SOCKET discoverySock = INVALID_SOCKET;
+	SOCKET gameSock = INVALID_SOCKET;
+	
+	sockaddr_in peerAddr{};
+	bool hasPeer = false;
+	
+	std::thread discoveryThread;
+	std::thread networkThread;
+	std::atomic<bool> running{false};
+	std::atomic<ConnectionState> connectionState{ConnectionState::Idle};
+	std::atomic<NetworkRole> role{NetworkRole::None};
+	
+	std::mutex callbackMutex;
+	std::function<void(const InputMessage&)> onInputReceived;
+	std::function<void(const GameStateSnapshot&)> onGameStateReceived;
+	std::function<void()> onConnected;
+	std::function<void()> onDisconnected;
+	
+	uint32_t sendSequence = 0;
+	uint32_t lastReceivedSequence = 0;
+	
+	std::chrono::steady_clock::time_point lastBroadcastTime;
+	std::chrono::steady_clock::time_point lastReceiveTime;
+};
+
+NetworkManager::NetworkManager()
+	: pImpl(new Impl)
+{
+	WSADATA wsa;
+	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+	{
+		// Error handling - in production you'd throw or return error
+	}
+}
+
+NetworkManager::~NetworkManager()
+{
+	Stop();
+	WSACleanup();
+	delete pImpl;
+}
+
+bool NetworkManager::StartDiscovery()
+{
+	if (pImpl->running)
+	{
+		return false;
+	}
+
+	// Create discovery socket
+	pImpl->discoverySock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (pImpl->discoverySock == INVALID_SOCKET)
+	{
+		return false;
+	}
+
+	// Enable broadcast
+	BOOL broadcast = TRUE;
+	setsockopt(pImpl->discoverySock, SOL_SOCKET, SO_BROADCAST, (char*)&broadcast, sizeof(broadcast));
+	
+	// Set non-blocking
+	u_long mode = 1;
+	ioctlsocket(pImpl->discoverySock, FIONBIO, &mode);
+
+	// Bind to discovery port
+	sockaddr_in localAddr{};
+	localAddr.sin_family = AF_INET;
+	localAddr.sin_addr.s_addr = INADDR_ANY;
+	localAddr.sin_port = htons(DISCOVERY_PORT);
+	
+	if (bind(pImpl->discoverySock, (sockaddr*)&localAddr, sizeof(localAddr)) == SOCKET_ERROR)
+	{
+		closesocket(pImpl->discoverySock);
+		pImpl->discoverySock = INVALID_SOCKET;
+		return false;
+	}
+
+	// Create game socket
+	pImpl->gameSock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (pImpl->gameSock == INVALID_SOCKET)
+	{
+		closesocket(pImpl->discoverySock);
+		pImpl->discoverySock = INVALID_SOCKET;
+		return false;
+	}
+
+	mode = 1;
+	ioctlsocket(pImpl->gameSock, FIONBIO, &mode);
+
+	sockaddr_in gameAddr{};
+	gameAddr.sin_family = AF_INET;
+	gameAddr.sin_addr.s_addr = INADDR_ANY;
+	gameAddr.sin_port = htons(GAME_PORT);
+	
+	if (bind(pImpl->gameSock, (sockaddr*)&gameAddr, sizeof(gameAddr)) == SOCKET_ERROR)
+	{
+		closesocket(pImpl->discoverySock);
+		closesocket(pImpl->gameSock);
+		pImpl->discoverySock = INVALID_SOCKET;
+		pImpl->gameSock = INVALID_SOCKET;
+		return false;
+	}
+
+	pImpl->running = true;
+	pImpl->connectionState = ConnectionState::Discovering;
+	pImpl->lastBroadcastTime = std::chrono::steady_clock::now();
+	pImpl->lastReceiveTime = std::chrono::steady_clock::now();
+
+	// Start threads
+	pImpl->discoveryThread = std::thread(&NetworkManager::DiscoveryThreadFunc, this);
+	pImpl->networkThread = std::thread(&NetworkManager::NetworkThreadFunc, this);
+
+	return true;
+}
+
+void NetworkManager::Stop()
+{
+	pImpl->running = false;
+	
+	if (pImpl->discoveryThread.joinable())
+	{
+		pImpl->discoveryThread.join();
+	}
+	
+	if (pImpl->networkThread.joinable())
+	{
+		pImpl->networkThread.join();
+	}
+
+	if (pImpl->discoverySock != INVALID_SOCKET)
+	{
+		closesocket(pImpl->discoverySock);
+		pImpl->discoverySock = INVALID_SOCKET;
+	}
+	
+	if (pImpl->gameSock != INVALID_SOCKET)
+	{
+		closesocket(pImpl->gameSock);
+		pImpl->gameSock = INVALID_SOCKET;
+	}
+
+	pImpl->hasPeer = false;
+	pImpl->connectionState = ConnectionState::Idle;
+	pImpl->role = NetworkRole::None;
+}
+
+ConnectionState NetworkManager::GetConnectionState() const
+{
+	return pImpl->connectionState;
+}
+
+NetworkRole NetworkManager::GetRole() const
+{
+	return pImpl->role;
+}
+
+void NetworkManager::SendInput(int8_t vx, int8_t vy, bool jump, float movePeriod)
+{
+	if (!pImpl->hasPeer || pImpl->gameSock == INVALID_SOCKET)
+	{
+		return;
+	}
+
+	InputMessage msg{};
+	msg.magic = GAME_MAGIC;
+	msg.sequence = htonl(pImpl->sendSequence++);
+	msg.vx = vx;
+	msg.vy = vy;
+	msg.jump = jump ? 1 : 0;
+	msg.movePeriod = movePeriod;
+
+	sendto(pImpl->gameSock, (char*)&msg, sizeof(msg), 0, 
+		   (sockaddr*)&pImpl->peerAddr, sizeof(pImpl->peerAddr));
+}
+
+void NetworkManager::SendGameState(const GameStateSnapshot& state)
+{
+	if (!pImpl->hasPeer || pImpl->gameSock == INVALID_SOCKET)
+	{
+		return;
+	}
+
+	GameStateSnapshot netState = state;
+	netState.magic = GAME_MAGIC;
+	netState.sequence = htonl(pImpl->sendSequence++);
+
+	sendto(pImpl->gameSock, (char*)&netState, sizeof(netState), 0,
+		   (sockaddr*)&pImpl->peerAddr, sizeof(pImpl->peerAddr));
+}
+
+void NetworkManager::SetOnInputReceived(std::function<void(const InputMessage&)> callback)
+{
+	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+	pImpl->onInputReceived = callback;
+}
+
+void NetworkManager::SetOnGameStateReceived(std::function<void(const GameStateSnapshot&)> callback)
+{
+	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+	pImpl->onGameStateReceived = callback;
+}
+
+void NetworkManager::SetOnConnected(std::function<void()> callback)
+{
+	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+	pImpl->onConnected = callback;
+}
+
+void NetworkManager::SetOnDisconnected(std::function<void()> callback)
+{
+	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+	pImpl->onDisconnected = callback;
+}
+
+std::string NetworkManager::GetPeerAddress() const
+{
+	if (!pImpl->hasPeer)
+	{
+		return "No peer";
+	}
+	
+	char buffer[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &pImpl->peerAddr.sin_addr, buffer, sizeof(buffer));
+	return std::string(buffer);
+}
+
+void NetworkManager::SendDiscoveryBroadcast()
+{
+	DiscoveryMessage msg{};
+	msg.magic = DISCOVERY_MAGIC;
+	msg.messageType = 0; // announce
+
+	sockaddr_in broadcastAddr{};
+	broadcastAddr.sin_family = AF_INET;
+	broadcastAddr.sin_addr.s_addr = INADDR_BROADCAST;
+	broadcastAddr.sin_port = htons(DISCOVERY_PORT);
+
+	sendto(pImpl->discoverySock, (char*)&msg, sizeof(msg), 0,
+		   (sockaddr*)&broadcastAddr, sizeof(broadcastAddr));
+}
+
+void NetworkManager::HandleDiscoveryResponse(sockaddr_in& from)
+{
+	// First peer to connect becomes the "host" (decides who is player 1/2)
+	// We'll use a simple rule: lower IP address is host
+	
+	char localIp[INET_ADDRSTRLEN];
+	char remoteIp[INET_ADDRSTRLEN];
+	
+	// Get local IP
+	char hostname[256];
+	gethostname(hostname, sizeof(hostname));
+	struct hostent* host = gethostbyname(hostname);
+	if (host != nullptr && host->h_addr_list[0] != nullptr)
+	{
+		struct in_addr addr;
+		memcpy(&addr, host->h_addr_list[0], sizeof(struct in_addr));
+		inet_ntop(AF_INET, &addr, localIp, sizeof(localIp));
+	}
+	
+	inet_ntop(AF_INET, &from.sin_addr, remoteIp, sizeof(remoteIp));
+	
+	// Determine role based on IP comparison
+	if (strcmp(localIp, remoteIp) < 0)
+	{
+		pImpl->role = NetworkRole::Host;
+	}
+	else
+	{
+		pImpl->role = NetworkRole::Client;
+	}
+
+	pImpl->peerAddr = from;
+	pImpl->peerAddr.sin_port = htons(GAME_PORT);
+	pImpl->hasPeer = true;
+	pImpl->connectionState = ConnectionState::Connected;
+
+	// Send response
+	DiscoveryMessage response{};
+	response.magic = DISCOVERY_MAGIC;
+	response.messageType = 1; // response
+
+	sendto(pImpl->discoverySock, (char*)&response, sizeof(response), 0,
+		   (sockaddr*)&from, sizeof(from));
+
+	// Notify connection established
+	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+	if (pImpl->onConnected)
+	{
+		pImpl->onConnected();
+	}
+}
+
+void NetworkManager::DiscoveryThreadFunc()
+{
+	char buffer[256];
+	
+	while (pImpl->running && pImpl->connectionState != ConnectionState::Connected)
+	{
+		// Send broadcast every 500ms
+		auto now = std::chrono::steady_clock::now();
+		if (std::chrono::duration_cast<std::chrono::milliseconds>(now - pImpl->lastBroadcastTime).count() > 500)
+		{
+			SendDiscoveryBroadcast();
+			pImpl->lastBroadcastTime = now;
+		}
+
+		// Check for incoming discovery messages
+		sockaddr_in from{};
+		int fromLen = sizeof(from);
+		int received = recvfrom(pImpl->discoverySock, buffer, sizeof(buffer), 0,
+								(sockaddr*)&from, &fromLen);
+
+		if (received == sizeof(DiscoveryMessage))
+		{
+			DiscoveryMessage* msg = (DiscoveryMessage*)buffer;
+			if (msg->magic == DISCOVERY_MAGIC && !pImpl->hasPeer)
+			{
+				HandleDiscoveryResponse(from);
+			}
+		}
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(50));
+	}
+}
+
+void NetworkManager::NetworkThreadFunc()
+{
+	char buffer[65536];
+	
+	while (pImpl->running)
+	{
+		if (pImpl->connectionState != ConnectionState::Connected)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(50));
+			continue;
+		}
+
+		sockaddr_in from{};
+		int fromLen = sizeof(from);
+		int received = recvfrom(pImpl->gameSock, buffer, sizeof(buffer), 0,
+								(sockaddr*)&from, &fromLen);
+
+		if (received > 0)
+		{
+			pImpl->lastReceiveTime = std::chrono::steady_clock::now();
+
+			// Check magic number
+			uint32_t* magic = (uint32_t*)buffer;
+			if (*magic != GAME_MAGIC)
+			{
+				continue;
+			}
+
+			// Process based on message size
+			if (received == sizeof(InputMessage))
+			{
+				InputMessage msg = *(InputMessage*)buffer;
+				msg.sequence = ntohl(msg.sequence);
+				
+				std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+				if (pImpl->onInputReceived)
+				{
+					pImpl->onInputReceived(msg);
+				}
+			}
+			else if (received == sizeof(GameStateSnapshot))
+			{
+				GameStateSnapshot state = *(GameStateSnapshot*)buffer;
+				state.sequence = ntohl(state.sequence);
+				
+				std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+				if (pImpl->onGameStateReceived)
+				{
+					pImpl->onGameStateReceived(state);
+				}
+			}
+		}
+
+		// Check for timeout (5 seconds without receiving data)
+		auto now = std::chrono::steady_clock::now();
+		if (std::chrono::duration_cast<std::chrono::seconds>(now - pImpl->lastReceiveTime).count() > 5)
+		{
+			pImpl->hasPeer = false;
+			pImpl->connectionState = ConnectionState::Disconnected;
+			
+			std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+			if (pImpl->onDisconnected)
+			{
+				pImpl->onDisconnected();
+			}
+		}
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60Hz
+	}
+}
