@@ -63,6 +63,12 @@ public:
 	// Set callback for connection established
 	void SetOnConnected(std::function<void()> callback);
 
+	// Set callback for peer detected (before accepting connection)
+	void SetOnPeerDetected(std::function<void()> callback);
+	
+	// Accept pending connection (call after user confirms)
+	void AcceptConnection();
+
 	// Set callback for connection lost
 	void SetOnDisconnected(std::function<void()> callback);
 

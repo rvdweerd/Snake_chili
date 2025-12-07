@@ -84,6 +84,12 @@ private:
 	static constexpr float networkSyncPeriod = 0.05f; // 20Hz sync rate
 	Location lastSentVelocity1 = {0, 0};
 	Location lastSentVelocity2 = {0, 0};
+	
+	// Network prompt state
+	bool networkPeerDetected = false;
+	bool networkPromptShown = false;
+	bool userWantsNetworking = false;
+	int originalNumPlayers = 1; // Store original setting from data.txt
 	/********************************/
 	//std::random_device rd;
 	//std::mt19937 rng;

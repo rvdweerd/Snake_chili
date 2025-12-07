@@ -2,17 +2,17 @@
 #include <assert.h>
 #include "Colors.h"
 
-Snake::Snake(const Location& startloc, const int size0, std::mt19937& rng)
+Snake::Snake(const Location& startloc, const int size0, std::mt19937& rng, Color headCol)
 	: 
-	snakeVelocity({1,0})
+	snakeVelocity({1,0}),
+	headColor(headCol)
 {
-	segments.emplace_back(Segment{startloc});
+	segments.emplace_back(Segment{startloc, headColor});
 	
 	std::uniform_int_distribution<int> colDistr(100, 255);
 	for (int i = 1; i < size0; i++)
 	{
-		segments.emplace_back(Segment{ startloc });
-		segments[i].color = Color(10, colDistr(rng), 10);
+		segments.emplace_back(Segment{ startloc, Color(10, colDistr(rng), 10) });
 	}
 }
 
@@ -48,9 +48,10 @@ void Snake::Grow(std::mt19937& rng)
 	{
 		for (int i = currentSnakeLength; i < currentSnakeLength+growth; i++)
 		{
+			Color newColor = Color(10, colDistr(rng), 10);
 			segments.emplace_back(Segment{});
+			segments[i].color = newColor;
 			segments[i].Follow(segments[currentSnakeLength - 1]);
-			segments[i].color = Color(10, colDistr(rng), 10);
 		}
 	}
 }
@@ -151,10 +152,10 @@ Snake::Segment::Segment()
 {
 }
 
- Snake::Segment::Segment(const Location& in_loc)
+Snake::Segment::Segment(const Location& in_loc, Color col)
 {
 	loc = in_loc;
-	color = Snake::headColor;
+	color = col;
 }
 
 void Snake::Segment::Follow(const Segment& segmentNext)
@@ -166,6 +167,10 @@ void Snake::Segment::Draw(Board& brd) const
 {
 	brd.DrawCell(loc, color);
 }
+
+
+
+
 
 
 

@@ -8,7 +8,9 @@ struct NetworkManager::Impl
 	SOCKET gameSock = INVALID_SOCKET;
 	
 	sockaddr_in peerAddr{};
+	sockaddr_in pendingPeerAddr{};
 	bool hasPeer = false;
+	bool hasPendingPeer = false;
 	
 	std::thread discoveryThread;
 	std::thread networkThread;
@@ -20,6 +22,7 @@ struct NetworkManager::Impl
 	std::function<void(const InputMessage&)> onInputReceived;
 	std::function<void(const GameStateSnapshot&)> onGameStateReceived;
 	std::function<void()> onConnected;
+	std::function<void()> onPeerDetected;
 	std::function<void()> onDisconnected;
 	
 	uint32_t sendSequence = 0;
@@ -212,6 +215,33 @@ void NetworkManager::SetOnConnected(std::function<void()> callback)
 	pImpl->onConnected = callback;
 }
 
+void NetworkManager::SetOnPeerDetected(std::function<void()> callback)
+{
+	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+	pImpl->onPeerDetected = callback;
+}
+
+void NetworkManager::AcceptConnection()
+{
+	if (!pImpl->hasPendingPeer)
+	{
+		return;
+	}
+
+	// Move pending peer to active peer
+	pImpl->peerAddr = pImpl->pendingPeerAddr;
+	pImpl->hasPeer = true;
+	pImpl->hasPendingPeer = false;
+	pImpl->connectionState = ConnectionState::Connected;
+
+	// Notify connection established
+	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+	if (pImpl->onConnected)
+	{
+		pImpl->onConnected();
+	}
+}
+
 void NetworkManager::SetOnDisconnected(std::function<void()> callback)
 {
 	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
@@ -247,6 +277,12 @@ void NetworkManager::SendDiscoveryBroadcast()
 
 void NetworkManager::HandleDiscoveryResponse(sockaddr_in& from)
 {
+	// Don't auto-connect if we already have a peer or pending peer
+	if (pImpl->hasPeer || pImpl->hasPendingPeer)
+	{
+		return;
+	}
+
 	// First peer to connect becomes the "host" (decides who is player 1/2)
 	// We'll use a simple rule: lower IP address is host
 	
@@ -276,10 +312,11 @@ void NetworkManager::HandleDiscoveryResponse(sockaddr_in& from)
 		pImpl->role = NetworkRole::Client;
 	}
 
-	pImpl->peerAddr = from;
-	pImpl->peerAddr.sin_port = htons(GAME_PORT);
-	pImpl->hasPeer = true;
-	pImpl->connectionState = ConnectionState::Connected;
+	// Store as pending peer instead of immediately connecting
+	pImpl->pendingPeerAddr = from;
+	pImpl->pendingPeerAddr.sin_port = htons(GAME_PORT);
+	pImpl->hasPendingPeer = true;
+	pImpl->connectionState = ConnectionState::WaitingForPeer;
 
 	// Send response
 	DiscoveryMessage response{};
@@ -289,11 +326,11 @@ void NetworkManager::HandleDiscoveryResponse(sockaddr_in& from)
 	sendto(pImpl->discoverySock, (char*)&response, sizeof(response), 0,
 		   (sockaddr*)&from, sizeof(from));
 
-	// Notify connection established
+	// Notify that a peer was detected (don't auto-connect)
 	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
-	if (pImpl->onConnected)
+	if (pImpl->onPeerDetected)
 	{
-		pImpl->onConnected();
+		pImpl->onPeerDetected();
 	}
 }
 

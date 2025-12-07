@@ -29,7 +29,7 @@ Game::Game(MainWindow& wnd)
 	gfx(wnd),
 	//gVar(std::string("data.txt")),
 	rng(std::random_device()()),
-	snk1({ 0,0 }, gVar.initialSnakelength, rng),
+	snk1({ 0,0 }, gVar.initialSnakelength, rng, Colors::Magenta),
 	snk2({ gVar.boardSizeX - 1, gVar.boardSizeY - 1 }, gVar.initialSnakelength, rng), // Second snake starts at the opposite corner
 	brd(gfx, snk1, gVar),
 	xDistr(0, brd.GetWidth() - 1),
@@ -44,12 +44,30 @@ Game::Game(MainWindow& wnd)
 	brd.Spawn(Board::contentType::poison, rng, gVar.poisonAmount);
 	brd.Spawn(Board::contentType::barrier, rng, 0);
 
+	// Store original numPlayers setting from data.txt
+	originalNumPlayers = gVar.numPlayers;
+
 	// Setup networking callbacks
+	networkMgr.SetOnPeerDetected([this]() {
+		// Peer detected - if user wanted single player, prompt them
+		if (originalNumPlayers == 1)
+		{
+			networkPeerDetected = true;
+			networkPromptShown = false; // Will show prompt in UpdateModel
+		}
+		else
+		{
+			// User wanted multiplayer, auto-accept
+			networkMgr.AcceptConnection();
+		}
+	});
+
 	networkMgr.SetOnConnected([this]() {
 		// Connection established
 		isNetworkHost = (networkMgr.GetRole() == NetworkRole::Host);
 		networkingEnabled = true;
-		gVar.numPlayers = 2; // Force 2 player mode when networked
+		userWantsNetworking = true;
+		gVar.numPlayers = 2; // Switch to 2 player mode
 	});
 
 	networkMgr.SetOnInputReceived([this](const InputMessage& msg) {
@@ -68,9 +86,11 @@ Game::Game(MainWindow& wnd)
 	networkMgr.SetOnDisconnected([this]() {
 		// Connection lost
 		networkingEnabled = false;
+		// Restore original setting
+		gVar.numPlayers = originalNumPlayers;
 	});
 
-	// Start network discovery
+	// Start network discovery (always start to detect peers)
 	networkMgr.StartDiscovery();
 }
 
@@ -85,6 +105,32 @@ void Game::Go()
 void Game::UpdateModel()
 {
 	float dt = frmTime.Mark();
+	
+	// Handle network peer detection prompt (before game starts)
+	if (networkPeerDetected && !networkPromptShown && !isStarted)
+	{
+		networkPromptShown = true;
+		// Prompt is displayed in ComposeFrame
+		// User presses Y to accept, N to decline
+	}
+
+	if (networkPeerDetected && networkPromptShown && !isStarted)
+	{
+		// Check for user input
+		if (wnd.kbd.KeyIsPressed('Y'))
+		{
+			// User accepts multiplayer
+			networkMgr.AcceptConnection();
+			networkPeerDetected = false;
+		}
+		else if (wnd.kbd.KeyIsPressed('N'))
+		{
+			// User declines multiplayer
+			networkPeerDetected = false;
+			networkPromptShown = false;
+			// Continue in single player mode
+		}
+	}
 	
 	// Update networking
 	UpdateNetworking();
@@ -302,6 +348,36 @@ void Game::ComposeFrame()
 	else
 	{
 		SpriteCodex::DrawTitle(100, 100, gfx);
+		
+		// Display network peer detection prompt
+		if (networkPeerDetected && networkPromptShown)
+		{
+			// Draw semi-transparent overlay
+			gfx.DrawRect(150, 200, 650, 400, Color(50, 50, 50));
+			
+			// Draw border
+			gfx.DrawRect(150, 200, 650, 205, Colors::Yellow);  // Top
+			gfx.DrawRect(150, 395, 650, 400, Colors::Yellow);  // Bottom
+			gfx.DrawRect(150, 200, 155, 400, Colors::Yellow);  // Left
+			gfx.DrawRect(645, 200, 650, 400, Colors::Yellow);  // Right
+			
+			// Draw simple text indicators using colored blocks
+			// "NETWORK PLAYER FOUND" indicator (yellow bars)
+			for (int i = 0; i < 15; i++)
+			{
+				gfx.DrawRect(180 + i*30, 220, 180 + i*30 + 25, 240, Colors::Yellow);
+			}
+			
+			// "Y = ACCEPT" indicator (green blocks)
+			gfx.DrawRect(200, 280, 230, 310, Colors::Green);    // Y shape
+			gfx.DrawRect(215, 295, 230, 310, Colors::Green);
+			gfx.DrawRect(200, 295, 215, 310, Colors::Green);
+			gfx.DrawRect(350, 280, 550, 310, Colors::Green);    // ACCEPT bar
+			
+			// "N = DECLINE" indicator (red blocks)
+			gfx.DrawRect(200, 330, 230, 360, Colors::Red);       // N shape
+			gfx.DrawRect(350, 330, 550, 360, Colors::Red);       // DECLINE bar
+		}
 	}
 	if (gameOver)
 	{

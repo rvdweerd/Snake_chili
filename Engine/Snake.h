@@ -10,7 +10,7 @@ private:
 	{
 	public:
 		Segment();
-		Segment(const Location& in_loc);
+		Segment(const Location& in_loc, Color col);
 		void Follow(const Segment& segmentNext);
 		void Draw(Board &brd) const;
 		Location loc;
@@ -18,7 +18,7 @@ private:
 	};
 
 public:
-	Snake(const Location& startloc, const int size0, std::mt19937& rng);
+	Snake(const Location& startloc, const int size0, std::mt19937& rng, Color headCol = Colors::Red);
 	void Draw(Board& brd) ;
 	void MoveTo(const Location& new_loc);
 	void Grow(std::mt19937& rng);
@@ -35,7 +35,7 @@ public:
 
 private:
 	static constexpr int jumpSize = 3;
-	static constexpr Color headColor = Colors::Red;
+	Color headColor;
 	static constexpr Color bodyColor = Colors::White;
 	static constexpr int nSegmentsMax = 2000;
 	static constexpr int growth = 1;

@@ -3,6 +3,24 @@
 ## Overview
 The game now supports networked multiplayer over LAN. Two computers on the same local network can automatically discover each other and play together.
 
+## Configuration
+
+### Setting Player Mode (`data.txt`)
+
+The game respects the `[Num Players]` setting in `Engine/data.txt`:
+
+- **`[Num Players] = 1`** (Single Player Mode)
+  - Game starts in single-player mode
+  - If another player is detected on the network, you'll see a prompt:
+    - **Press Y** to accept multiplayer (switches to 2-player network mode)
+    - **Press N** to decline and continue in single-player
+  - You maintain control over whether to play networked or solo
+
+- **`[Num Players] = 2`** (Multiplayer Mode)
+  - Game automatically accepts network connections
+  - If no network peer is found, plays local 2-player (both snakes on same keyboard)
+  - When network peer connects, switches to networked mode automatically
+
 ## How It Works
 
 ### Automatic Discovery
@@ -106,11 +124,24 @@ If you have Norton 360 installed, you need to configure it separately:
 You can test the networking by running two instances of the game on the same computer. They will find each other and connect automatically.
 
 ## Connection Status
-- The game will automatically switch to 2-player mode when a connection is established
-- If the connection is lost (timeout > 5 seconds), the game continues in local mode
-- Scores are displayed:
+- **Single Player Mode** (`numPlayers = 1` in `data.txt`):
+  - Game searches for network peers in the background
+  - When a peer is detected, a yellow prompt appears on the title screen
+  - Press **Y** to accept multiplayer or **N** to decline
+  - If declined, continues in single-player mode
+
+- **Multiplayer Mode** (`numPlayers = 2` in `data.txt`):
+  - Game automatically accepts the first network peer found
+  - Switches to 2-player mode when connection is established
+  
+- **During Gameplay**:
+  - If the connection is lost (timeout > 5 seconds), the game reverts to your original `numPlayers` setting
+  - In single-player mode: only snake 1 remains active
+  - In local 2-player mode: both snakes remain active on the same keyboard
+
+- **Score Display**:
   - Player 1 score: Top right
-  - Player 2 score: Top left
+  - Player 2 score: Top left (only in 2-player mode)
 
 ## Troubleshooting
 
