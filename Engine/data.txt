@@ -4,12 +4,14 @@
 50 38
 x  y
 [Speedup Rate]
-1.05f
+1.01f
 [Poison Amount]
-150
+0
 [Food Amount]
-10
+50
 [Initial Speed]
-0.5f
+.5f
 [Initial Snakelength]
-10
+5
+[Num Players]
+2

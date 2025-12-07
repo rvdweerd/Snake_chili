@@ -81,8 +81,9 @@ bool Snake::IsInTile(const Location& target) const
 
 void Snake::Reset()
 {
-	segments.clear();
-	segments.emplace_back(Segment{ {0,0} });
+	segments.resize(2);
+	//segments.clear();
+	//segments.emplace_back(Segment{ {0,0} });
 	//segments[0].InitHead({ 10,10 });
 }
 

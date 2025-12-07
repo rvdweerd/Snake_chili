@@ -50,18 +50,25 @@ private:
 	/*  User Variables              */
 	GameVariables gVar = std::string("data.txt");
 	std::mt19937 rng;
-	Snake snk;
+	Snake snk1;
+	Snake snk2;
 	Board brd;
 
 	FrameTimer frmTime;
 	bool gameOver = false;
 	bool isStarted = false;
 	int snkAcceleration = 0;
-	float snkMovePeriod; // timestep in seconds
-	float snkMoveCounter = 0.0f;
+	float snk1MovePeriod; // timestep in seconds for snake 1
+	float snk2MovePeriod; // timestep in seconds for snake 2
+	float snk1MoveCounter = 0.0f;
+	float snk2MoveCounter = 0.0f;
 	std::uniform_int_distribution<int> xDistr;
 	std::uniform_int_distribution<int> yDistr;
 
+	// Score variables
+	int player1Score = 0;
+	int player2Score = 0;
+	int crashedPlayer = 0; // 0 = no crash, 1 = player1 crashed, 2 = player2 crashed, 3 = both crashed
 	/********************************/
 	//std::random_device rd;
 	//std::mt19937 rng;

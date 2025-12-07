@@ -24,24 +24,26 @@
 
 
 
-Game::Game( MainWindow& wnd )
+Game::Game(MainWindow& wnd)
 	:
-	wnd( wnd ),
-	gfx( wnd ),
+	wnd(wnd),
+	gfx(wnd),
 	//gVar(std::string("data.txt")),
-	rng(std::random_device()() ),
-	snk({0,0},gVar.initialSnakelength,rng),
-	brd( gfx, snk , gVar),
+	rng(std::random_device()()),
+	snk1({ 0,0 }, gVar.initialSnakelength, rng),
+	snk2({ gVar.boardSizeX - 1, gVar.boardSizeY - 1 }, gVar.initialSnakelength, rng), // Second snake starts at the opposite corner
+	brd(gfx, snk1, gVar),
 	xDistr(0, brd.GetWidth() - 1),
 	yDistr(0, brd.GetHeight() - 1)
 {
 	//int coveragePercentage = 10;
 	//int nPoison = Board::GetWidth() * Board::GetHeight() * coveragePercentage / 100;
-	
-	snkMovePeriod = gVar.initialSpeed;
-	brd.Spawn(Board::contentType::food, rng,  std::max(1,gVar.foodAmount) );			
-	brd.Spawn(Board::contentType::poison, rng, gVar.poisonAmount );
-	brd.Spawn(Board::contentType::barrier, rng,  0);		
+
+	snk1MovePeriod = gVar.initialSpeed;
+	snk2MovePeriod = gVar.initialSpeed;
+	brd.Spawn(Board::contentType::food, rng, std::max(1, gVar.foodAmount));
+	brd.Spawn(Board::contentType::poison, rng, gVar.poisonAmount);
+	brd.Spawn(Board::contentType::barrier, rng, 0);
 }
 
 void Game::Go()
@@ -58,62 +60,154 @@ void Game::UpdateModel()
 	if (isStarted)
 	{
 		//Control direction of snake
-		if (wnd.kbd.KeyIsPressed(0x66))	{ snk.SetSnakeVelocity( { 1, 0} );}	// move right
-		if (wnd.kbd.KeyIsPressed(0x64))	{ snk.SetSnakeVelocity( {-1, 0} );}	// move left
-		if (wnd.kbd.KeyIsPressed(0x62))	{ snk.SetSnakeVelocity( { 0, 1} );}	// move down
-		if (wnd.kbd.KeyIsPressed(0x68))	{ snk.SetSnakeVelocity( { 0,-1} );}	// move up
+		if (wnd.kbd.KeyIsPressed(0x66))	{ snk1.SetSnakeVelocity( { 1, 0} );}	// move right
+		if (wnd.kbd.KeyIsPressed(0x64))	{ snk1.SetSnakeVelocity( {-1, 0} );}	// move left
+		if (wnd.kbd.KeyIsPressed(0x62))	{ snk1.SetSnakeVelocity( { 0, 1} );}	// move down
+		if (wnd.kbd.KeyIsPressed(0x68))	{ snk1.SetSnakeVelocity( { 0,-1} );}	// move up
 		//Adjust speed 
-		if (wnd.kbd.KeyIsPressed(0x61)) { snkMovePeriod *= 1.05f; }			// slower
-		if (wnd.kbd.KeyIsPressed(0x67)) { snkMovePeriod /= 1.05f; }			// faster
-		if (wnd.kbd.KeyIsPressed(0x69)) { snk.SetSnakeVelocity( { 0,0 } );}	// stall
+		if (wnd.kbd.KeyIsPressed(0x61)) { snk1MovePeriod *= 1.05f; }			// slower 7
+		if (wnd.kbd.KeyIsPressed(0x67)) { snk1MovePeriod /= 1.05f; }			// faster 1
+		if (wnd.kbd.KeyIsPressed(0x69)) { snk1.SetSnakeVelocity( { 0,0 } );}	// stall 9
 		//Jump
-		if (wnd.kbd.KeyIsPressed(0x65)) { snk.JumpOn();}						//jump
+		if (wnd.kbd.KeyIsPressed(0x65)) { snk1.JumpOn();}						//jump
+		
+		// Control second snake (if two players)
+		if (gVar.numPlayers == 2)
+		{
+			if (wnd.kbd.KeyIsPressed('D')) { snk2.SetSnakeVelocity({ 1, 0 }); } // move right
+			if (wnd.kbd.KeyIsPressed('A')) { snk2.SetSnakeVelocity({ -1, 0 }); } // move left
+			if (wnd.kbd.KeyIsPressed('X')) { snk2.SetSnakeVelocity({ 0, 1 }); } // move down
+			if (wnd.kbd.KeyIsPressed('W')) { snk2.SetSnakeVelocity({ 0, -1 }); } // move up
+			if (wnd.kbd.KeyIsPressed('Z')) { snk2MovePeriod *= 1.05f; }			// slower
+			if (wnd.kbd.KeyIsPressed('Q')) { snk2MovePeriod /= 1.05f; }			// faster
+			if (wnd.kbd.KeyIsPressed('E')) { snk2.SetSnakeVelocity({0,0}); }	// stall
+			if (wnd.kbd.KeyIsPressed('S')) { snk2.JumpOn(); }
+
+		}
+
 
 		if (!gameOver)
-		{	
-			snkMoveCounter+=dt;
-			if (snkMoveCounter >= snkMovePeriod)
+		{
+			snk1MoveCounter += dt;
+			if (gVar.numPlayers == 2)
 			{
-				const Location new_loc = snk.GetNextHeadLocation(snk.GetSnakeVelocity(), brd);
-		
-				//grow if eats food
-				if (brd.GetCellContent(new_loc) == Board::contentType::food)
+				snk2MoveCounter += dt;
+			}
+
+			// Move snake 1 if its timer has elapsed
+			if (snk1MoveCounter >= snk1MovePeriod)
+			{
+				const Location new_loc1 = snk1.GetNextHeadLocation(snk1.GetSnakeVelocity(), brd);
+
+				// Handle food and poison interactions for snake 1
+				if (brd.GetCellContent(new_loc1) == Board::contentType::food)
 				{
-					snk.Grow(rng);
-					brd.Spawn(Board::contentType::food    , rng ,  1); 
-					brd.Spawn(Board::contentType::barrier , rng ,  1); 
-					brd.SetCellContent(new_loc, Board::contentType::empty);
+					snk1.Grow(rng);
+					brd.Spawn(Board::contentType::food, rng, 1);
+					brd.Spawn(Board::contentType::barrier, rng, 1);
+					brd.SetCellContent(new_loc1, Board::contentType::empty);
+					// Increase player 1's score
+					player1Score++;
 				}
 
-				//speed up if eats poison
-				if (brd.GetCellContent(new_loc) == Board::contentType::poison) 
+				if (brd.GetCellContent(new_loc1) == Board::contentType::poison)
 				{
-					brd.SetCellContent(new_loc, Board::contentType::empty);
-					snkMovePeriod /= gVar.speedupRate;//1.05f;
+					brd.SetCellContent(new_loc1, Board::contentType::empty);
+					snk1MovePeriod /= gVar.speedupRate; // Only affects snake 1
 				}
 
-				//game over conditions
-				if	( snk.IsInTileExceptEnd(new_loc) &&  snk.IsMoving() ||			// snake eats itself
-					  brd.GetCellContent(new_loc) == Board::contentType::barrier)	// snake hits barrier
+				// Collision detection for snake 1
+				bool snake1Collision = false;
+				if (snk1.IsInTileExceptEnd(new_loc1) && snk1.IsMoving() ||
+					brd.GetCellContent(new_loc1) == Board::contentType::barrier)
 				{
+					snake1Collision = true;
+				}
+
+				// Check if snake 1 collides with snake 2 (if two players)
+				if (gVar.numPlayers == 2 && snk2.IsInTile(new_loc1))
+				{
+					snake1Collision = true;
+				}
+
+				if (snake1Collision)
+				{
+					// Player 1 crashed, reset their score
+					player1Score = 0;
+					crashedPlayer = 1;
 					gameOver = true;
 				}
-				
-				//Optional game over condition if out of bounds (keep gameOver to false to allow re-entering the board)
-				if (!brd.IsInsideBoard( snk.GetCurrentHeadLocation() + snk.GetSnakeVelocity() ))
+
+				// Move snake 1
+				if (!gameOver)
 				{
-					//gameOver = true;
+					snk1.MoveTo(new_loc1);
+					snk1.JumpOff();
 				}
 
-				//move the snake 
-				if (!gameOver) 
+				snk1MoveCounter = 0;
+			}
+
+			// Move snake 2 if its timer has elapsed (if two players)
+			if (gVar.numPlayers == 2 && snk2MoveCounter >= snk2MovePeriod)
+			{
+				const Location new_loc2 = snk2.GetNextHeadLocation(snk2.GetSnakeVelocity(), brd);
+
+				// Handle food and poison interactions for snake 2
+				if (brd.GetCellContent(new_loc2) == Board::contentType::food)
 				{
-					snk.MoveTo( new_loc ); 
-					snk.JumpOff();
+					snk2.Grow(rng);
+					brd.Spawn(Board::contentType::food, rng, 1);
+					brd.Spawn(Board::contentType::barrier, rng, 1);
+					brd.SetCellContent(new_loc2, Board::contentType::empty);
+					// Increase player 2's score
+					player2Score++;
 				}
-				
-				//reset framecounter
-				snkMoveCounter = 0;
+
+				if (brd.GetCellContent(new_loc2) == Board::contentType::poison)
+				{
+					brd.SetCellContent(new_loc2, Board::contentType::empty);
+					snk2MovePeriod /= gVar.speedupRate; // Only affects snake 2
+				}
+
+				// Collision detection for snake 2
+				bool snake2Collision = false;
+				if (snk2.IsInTileExceptEnd(new_loc2) && snk2.IsMoving() ||
+					brd.GetCellContent(new_loc2) == Board::contentType::barrier)
+				{
+					snake2Collision = true;
+				}
+
+				// Check if snake 2 collides with snake 1
+				if (snk1.IsInTile(new_loc2))
+				{
+					snake2Collision = true;
+				}
+
+				if (snake2Collision)
+				{
+					// Player 2 crashed, reset their score
+					player2Score = 0;
+					if (crashedPlayer == 1)
+					{
+						// Both players crashed
+						crashedPlayer = 3;
+					}
+					else
+					{
+						crashedPlayer = 2;
+					}
+					gameOver = true;
+				}
+
+				// Move snake 2
+				if (!gameOver)
+				{
+					snk2.MoveTo(new_loc2);
+					snk2.JumpOff();
+				}
+
+				snk2MoveCounter = 0;
 			}
 		}
 	}
@@ -125,6 +219,20 @@ void Game::UpdateModel()
 			isStarted = true;
 			gameOver = false;
 			//snk.Reset();
+			// Reset speeds to initial values
+			// Only reset speed for players that crashed
+			if (crashedPlayer == 1 || crashedPlayer == 3) // Player 1 crashed or both crashed
+			{
+				snk1MovePeriod = gVar.initialSpeed;
+				snk1.Reset();
+				
+			}
+			if (crashedPlayer == 2 || crashedPlayer == 3) // Player 2 crashed or both crashed
+			{
+				snk2MovePeriod = gVar.initialSpeed;
+				snk2.Reset();
+			}
+			crashedPlayer = 0;
 		}
 	}
 }
@@ -135,12 +243,25 @@ void Game::ComposeFrame()
 	{
 		brd.DrawBorders();
 		brd.DrawCellContents();
-		snk.Draw(brd);
-	} 
+		snk1.Draw(brd); // Draw first snake
+		if (gVar.numPlayers == 2)
+		{
+			snk2.Draw(brd); // Draw second snake
+		}
+		// Draw score displays
+		// Player 1 score (top-right)
+		SpriteCodex::DrawNumber(player1Score, gfx.ScreenWidth - 50, 10, gfx);
+
+		// Player 2 score (top-left) - only in two player mode
+		if (gVar.numPlayers == 2)
+		{
+			SpriteCodex::DrawNumber(player2Score, 10, 10, gfx);
+		}
+	}
 	else
 	{
 		SpriteCodex::DrawTitle(100, 100, gfx);
-	}	
+	}
 	if (gameOver)
 	{
 		SpriteCodex::DrawGameOver(200, 200, gfx);

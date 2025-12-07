@@ -39,11 +39,13 @@ public:
 			if (line == "[Initial Snakelength]")
 			{
 				in >> initialSnakelength;
+				}
+			if (line == "[Num Players]")
+			{
+				in >> numPlayers;
 			}
 		}
-
 	}
-	
 
 public:
 	int tileSize;
@@ -54,4 +56,5 @@ public:
 	int foodAmount;
 	float initialSpeed;
 	int initialSnakelength;
+	int numPlayers = 1; // Default to single-player mode
 };
