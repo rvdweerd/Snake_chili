@@ -102,7 +102,7 @@ private:
 	bool networkPromptShown = false;
 	bool userWantsNetworking = false;
 	int originalNumPlayers = 1; // Store original setting from data.txt
-	float networkSearchTimeout = 30.0f;  // 30 seconds to find peer
+	float networkSearchTimeout = 120.0f;  // 120 seconds (2 minutes) to find peer
 	float networkSearchTimer = 0.0f;
 	std::string networkError;
 	

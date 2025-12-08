@@ -224,6 +224,22 @@ void NetworkManager::SendStartCommand()
 		   (sockaddr*)&pImpl->peerAddr, sizeof(pImpl->peerAddr));
 }
 
+void NetworkManager::SendHeartbeat()
+{
+	if (!pImpl->hasPeer || pImpl->gameSock == INVALID_SOCKET)
+	{
+		return;
+	}
+
+	Heartbeat hb{};
+	hb.magic = GAME_MAGIC;
+	hb.timestamp = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now().time_since_epoch()).count());
+
+	sendto(pImpl->gameSock, (char*)&hb, sizeof(hb), 0,
+		   (sockaddr*)&pImpl->peerAddr, sizeof(pImpl->peerAddr));
+}
+
 void NetworkManager::SetOnInputReceived(std::function<void(const InputMessage&)> callback)
 {
 	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
@@ -455,7 +471,7 @@ void NetworkManager::NetworkThreadFunc()
 {
 	char buffer[65536];
 	std::chrono::steady_clock::time_point lastAliveCheck = std::chrono::steady_clock::now();
-	const int connectionTimeoutSeconds = 5;
+	const int connectionTimeoutSeconds = 60; // Increased to 60 seconds for better robustness
 	
 	while (pImpl->running)
 	{
@@ -503,6 +519,11 @@ void NetworkManager::NetworkThreadFunc()
 				{
 					pImpl->onGameStartReceived();
 				}
+			}
+			else if (received == sizeof(Heartbeat))
+			{
+				// Heartbeat received - connection is alive
+				// We already updated lastReceiveTime above, nothing else to do
 			}
 			else if (received == sizeof(GameStateSnapshot))
 			{

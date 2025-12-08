@@ -57,6 +57,9 @@ public:
 	// Send start game command (host only)
 	void SendStartCommand();
 
+	// Send heartbeat keepalive (both host and client)
+	void SendHeartbeat();
+
 	// Set callback for received input (host uses this)
 	void SetOnInputReceived(std::function<void(const InputMessage&)> callback);
 
@@ -135,6 +138,12 @@ struct StartCommand
 	uint32_t magic;
 	uint8_t commandType; // 0 = start game
 	char padding[3];
+};
+
+struct Heartbeat
+{
+	uint32_t magic;
+	uint32_t timestamp; // For ping calculation if needed
 };
 
 struct SnakeSegment
