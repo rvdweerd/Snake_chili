@@ -39,7 +39,7 @@ public:
 			if (line == "[Initial Snakelength]")
 			{
 				in >> initialSnakelength;
-				}
+			}
 			if (line == "[Num Players]")
 			{
 				in >> numPlayers;
@@ -48,13 +48,13 @@ public:
 	}
 
 public:
-	int tileSize;
-	int boardSizeX;
-	int boardSizeY;
-	float speedupRate;
-	int poisonAmount;
-	int foodAmount;
-	float initialSpeed;
-	int initialSnakelength;
+	int tileSize = 15;
+	int boardSizeX = 50;
+	int boardSizeY = 38;
+	float speedupRate = 1.01f;
+	int poisonAmount = 0;
+	int foodAmount = 10;
+	float initialSpeed = 0.5f;
+	int initialSnakelength = 5;
 	int numPlayers = 1; // Default to single-player mode
 };

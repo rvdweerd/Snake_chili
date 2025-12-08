@@ -115,9 +115,20 @@ bool NetworkManager::StartDiscovery()
 	pImpl->lastBroadcastTime = std::chrono::steady_clock::now();
 	pImpl->lastReceiveTime = std::chrono::steady_clock::now();
 
-	// Start threads
-	pImpl->discoveryThread = std::thread(&NetworkManager::DiscoveryThreadFunc, this);
-	pImpl->networkThread = std::thread(&NetworkManager::NetworkThreadFunc, this);
+	// Start threads with exception handling
+	try {
+		pImpl->discoveryThread = std::thread(&NetworkManager::DiscoveryThreadFunc, this);
+		pImpl->networkThread = std::thread(&NetworkManager::NetworkThreadFunc, this);
+	}
+	catch (const std::system_error& e) {
+		// Thread creation failed - clean up
+		pImpl->running = false;
+		closesocket(pImpl->discoverySock);
+		closesocket(pImpl->gameSock);
+		pImpl->discoverySock = INVALID_SOCKET;
+		pImpl->gameSock = INVALID_SOCKET;
+		return false;
+	}
 
 	return true;
 }
@@ -260,6 +271,26 @@ std::string NetworkManager::GetPeerAddress() const
 	return std::string(buffer);
 }
 
+std::string NetworkManager::GetLocalAddress() const
+{
+	char localIp[INET_ADDRSTRLEN] = {};
+	char hostname[256];
+	
+	if (gethostname(hostname, sizeof(hostname)) == 0)
+	{
+		struct hostent* host = gethostbyname(hostname);
+		if (host != nullptr && host->h_addr_list[0] != nullptr)
+		{
+			struct in_addr addr;
+			memcpy(&addr, host->h_addr_list[0], sizeof(struct in_addr));
+			inet_ntop(AF_INET, &addr, localIp, sizeof(localIp));
+			return std::string(localIp);
+		}
+	}
+	
+	return "Unknown";
+}
+
 void NetworkManager::SendDiscoveryBroadcast()
 {
 	DiscoveryMessage msg{};
@@ -286,18 +317,20 @@ void NetworkManager::HandleDiscoveryResponse(sockaddr_in& from)
 	// First peer to connect becomes the "host" (decides who is player 1/2)
 	// We'll use a simple rule: lower IP address is host
 	
-	char localIp[INET_ADDRSTRLEN];
-	char remoteIp[INET_ADDRSTRLEN];
+	char localIp[INET_ADDRSTRLEN] = {};
+	char remoteIp[INET_ADDRSTRLEN] = {};
 	
 	// Get local IP
 	char hostname[256];
-	gethostname(hostname, sizeof(hostname));
-	struct hostent* host = gethostbyname(hostname);
-	if (host != nullptr && host->h_addr_list[0] != nullptr)
+	if (gethostname(hostname, sizeof(hostname)) == 0)
 	{
-		struct in_addr addr;
-		memcpy(&addr, host->h_addr_list[0], sizeof(struct in_addr));
-		inet_ntop(AF_INET, &addr, localIp, sizeof(localIp));
+		struct hostent* host = gethostbyname(hostname);
+		if (host != nullptr && host->h_addr_list[0] != nullptr)
+		{
+			struct in_addr addr;
+			memcpy(&addr, host->h_addr_list[0], sizeof(struct in_addr));
+			inet_ntop(AF_INET, &addr, localIp, sizeof(localIp));
+		}
 	}
 	
 	inet_ntop(AF_INET, &from.sin_addr, remoteIp, sizeof(remoteIp));
@@ -312,7 +345,7 @@ void NetworkManager::HandleDiscoveryResponse(sockaddr_in& from)
 		pImpl->role = NetworkRole::Client;
 	}
 
-	// Store as pending peer instead of immediately connecting
+	// Store as pending peer (MUST be done before callback!)
 	pImpl->pendingPeerAddr = from;
 	pImpl->pendingPeerAddr.sin_port = htons(GAME_PORT);
 	pImpl->hasPendingPeer = true;
@@ -326,7 +359,7 @@ void NetworkManager::HandleDiscoveryResponse(sockaddr_in& from)
 	sendto(pImpl->discoverySock, (char*)&response, sizeof(response), 0,
 		   (sockaddr*)&from, sizeof(from));
 
-	// Notify that a peer was detected (don't auto-connect)
+	// Notify that a peer was detected (peer is now fully set up)
 	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
 	if (pImpl->onPeerDetected)
 	{

@@ -4,11 +4,12 @@
 #include "Snake.h"
 
 
-Board::Board(Graphics & gfx_in, Snake& snk_in, GameVariables& gVar)
+Board::Board(Graphics & gfx_in, Snake& snk1_in, Snake& snk2_in, GameVariables& gVar)
 	:
 	dimension(gVar.tileSize),
 	gfx(gfx_in),
-	snk(snk_in),
+	snk1(snk1_in),
+	snk2(snk2_in),
 	width(gVar.boardSizeX),
 	height(gVar.boardSizeY),
 	masterArray(width * height, contentType::empty)// { contentType::empty } )
@@ -75,15 +76,19 @@ bool Board::IsInsideBoard(const Location & loc) const
 //void Board::Spawn(contentType cellType, std::mt19937& rng, Snake& snk, int n)
 void Board::Spawn(contentType cellType, std::mt19937& rng, int n)
 {
-	std::uniform_int_distribution<int> arrayDistr(0, width*height);
+	std::uniform_int_distribution<int> arrayDistr(0, width*height - 1);
 	
 	for (int nSpawns = 0; nSpawns < n; nSpawns++)
 	{
 		int i;
+		Location testLoc;
 		do
 		{
 			i = arrayDistr(rng);
-		} while (masterArray[i] != contentType::empty || snk.IsInTile({ i % (width) , (i - i % (width)) / width }));
+			testLoc = { i % width , (i - i % width) / width };
+		} while (masterArray[i] != contentType::empty || 
+		         snk1.IsInTile(testLoc) || 
+		         snk2.IsInTile(testLoc));
 		masterArray[i] = cellType;
 	}
 }

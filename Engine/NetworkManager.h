@@ -75,6 +75,9 @@ public:
 	// Get peer address for display
 	std::string GetPeerAddress() const;
 
+	// Get local address for display
+	std::string GetLocalAddress() const;
+
 private:
 	void DiscoveryThreadFunc();
 	void NetworkThreadFunc();

@@ -27,17 +27,13 @@ Game::Game(MainWindow& wnd)
 	:
 	wnd(wnd),
 	gfx(wnd),
-	//gVar(std::string("data.txt")),
 	rng(std::random_device()()),
 	snk1({ 0,0 }, gVar.initialSnakelength, rng, Colors::Magenta),
-	snk2({ gVar.boardSizeX - 1, gVar.boardSizeY - 1 }, gVar.initialSnakelength, rng), // Second snake starts at the opposite corner
-	brd(gfx, snk1, gVar),
+	snk2({ gVar.boardSizeX - 1, gVar.boardSizeY - 1 }, gVar.initialSnakelength, rng),
+	brd(gfx, snk1, snk2, gVar),
 	xDistr(0, brd.GetWidth() - 1),
 	yDistr(0, brd.GetHeight() - 1)
 {
-	//int coveragePercentage = 10;
-	//int nPoison = Board::GetWidth() * Board::GetHeight() * coveragePercentage / 100;
-
 	snk1MovePeriod = gVar.initialSpeed;
 	snk2MovePeriod = gVar.initialSpeed;
 	brd.Spawn(Board::contentType::food, rng, std::max(1, gVar.foodAmount));
@@ -47,19 +43,11 @@ Game::Game(MainWindow& wnd)
 	// Store original numPlayers setting from data.txt
 	originalNumPlayers = gVar.numPlayers;
 
-	// Setup networking callbacks
+	// Setup networking callbacks (but don't start networking yet)
+	// Networking will only start if user explicitly opts in by pressing 'N' key on title screen
 	networkMgr.SetOnPeerDetected([this]() {
-		// Peer detected - if user wanted single player, prompt them
-		if (originalNumPlayers == 1)
-		{
-			networkPeerDetected = true;
-			networkPromptShown = false; // Will show prompt in UpdateModel
-		}
-		else
-		{
-			// User wanted multiplayer, auto-accept
-			networkMgr.AcceptConnection();
-		}
+		networkPeerDetected = true;
+		networkPromptShown = false; // Will show prompt in UpdateModel
 	});
 
 	networkMgr.SetOnConnected([this]() {
@@ -90,8 +78,9 @@ Game::Game(MainWindow& wnd)
 		gVar.numPlayers = originalNumPlayers;
 	});
 
-	// Start network discovery (always start to detect peers)
-	networkMgr.StartDiscovery();
+	// NOTE: Networking is NOT started automatically
+	// User must press 'N' key on title screen to start network discovery
+	// This prevents the thread creation crash on startup
 }
 
 void Game::Go()
@@ -106,12 +95,24 @@ void Game::UpdateModel()
 {
 	float dt = frmTime.Mark();
 	
+	// Allow user to manually start networking by pressing 'N' key (only when game not started)
+	if (!isStarted && !networkingEnabled && wnd.kbd.KeyIsPressed('N'))
+	{
+		// Try to start network discovery
+		bool networkStarted = networkMgr.StartDiscovery();
+		if (!networkStarted)
+		{
+			// Failed to start networking - continue in local mode
+			// Could add visual feedback here in the future
+		}
+	}
+	
 	// Handle network peer detection prompt (before game starts)
 	if (networkPeerDetected && !networkPromptShown && !isStarted)
 	{
 		networkPromptShown = true;
 		// Prompt is displayed in ComposeFrame
-		// User presses Y to accept, N to decline
+		// User presses Y to accept, O to decline
 	}
 
 	if (networkPeerDetected && networkPromptShown && !isStarted)
@@ -123,7 +124,7 @@ void Game::UpdateModel()
 			networkMgr.AcceptConnection();
 			networkPeerDetected = false;
 		}
-		else if (wnd.kbd.KeyIsPressed('N'))
+		else if (wnd.kbd.KeyIsPressed('O'))
 		{
 			// User declines multiplayer
 			networkPeerDetected = false;
@@ -141,17 +142,17 @@ void Game::UpdateModel()
 		// Client only sends input and receives state updates
 		bool shouldProcessGameLogic = !networkingEnabled || isNetworkHost;
 
-		//Control direction of snake
-		if (wnd.kbd.KeyIsPressed(0x66))	{ snk1.SetSnakeVelocity( { 1, 0} );}	// move right
-		if (wnd.kbd.KeyIsPressed(0x64))	{ snk1.SetSnakeVelocity( {-1, 0} );}	// move left
-		if (wnd.kbd.KeyIsPressed(0x62))	{ snk1.SetSnakeVelocity( { 0, 1} );}	// move down
-		if (wnd.kbd.KeyIsPressed(0x68))	{ snk1.SetSnakeVelocity( { 0,-1} );}	// move up
+		//Control direction of snake 1
+		if (wnd.kbd.KeyIsPressed(0x66))	{ snk1.SetSnakeVelocity( { 1, 0} );}	// move right (numpad 6)
+		if (wnd.kbd.KeyIsPressed(0x64))	{ snk1.SetSnakeVelocity( {-1, 0} );}	// move left (numpad 4)
+		if (wnd.kbd.KeyIsPressed(0x62))	{ snk1.SetSnakeVelocity( { 0, 1} );}	// move down (numpad 2)
+		if (wnd.kbd.KeyIsPressed(0x68))	{ snk1.SetSnakeVelocity( { 0,-1} );}	// move up (numpad 8)
 		//Adjust speed 
-		if (wnd.kbd.KeyIsPressed(0x61)) { snk1MovePeriod *= 1.05f; }			// slower 7
-		if (wnd.kbd.KeyIsPressed(0x67)) { snk1MovePeriod /= 1.05f; }			// faster 1
-		if (wnd.kbd.KeyIsPressed(0x69)) { snk1.SetSnakeVelocity( { 0,0 } );}	// stall 9
+		if (wnd.kbd.KeyIsPressed(0x61)) { snk1MovePeriod *= 1.05f; }			// slower (numpad 7)
+		if (wnd.kbd.KeyIsPressed(0x67)) { snk1MovePeriod /= 1.05f; }			// faster (numpad 1)
+		if (wnd.kbd.KeyIsPressed(0x69)) { snk1.SetSnakeVelocity( { 0,0 } );}	// stall (numpad 9)
 		//Jump
-		if (wnd.kbd.KeyIsPressed(0x65)) { snk1.JumpOn();}						//jump
+		if (wnd.kbd.KeyIsPressed(0x65)) { snk1.JumpOn();}						// jump (numpad 5)
 		
 		// Control second snake
 		if (gVar.numPlayers == 2)
@@ -161,14 +162,14 @@ void Game::UpdateModel()
 			
 			if (isLocalSnake2)
 			{
-				if (wnd.kbd.KeyIsPressed('D')) { snk2.SetSnakeVelocity({ 1, 0 }); } // move right
+				if (wnd.kbd.KeyIsPressed('D')) { snk2.SetSnakeVelocity({ 1, 0 }); }  // move right
 				if (wnd.kbd.KeyIsPressed('A')) { snk2.SetSnakeVelocity({ -1, 0 }); } // move left
-				if (wnd.kbd.KeyIsPressed('X')) { snk2.SetSnakeVelocity({ 0, 1 }); } // move down
+				if (wnd.kbd.KeyIsPressed('X')) { snk2.SetSnakeVelocity({ 0, 1 }); }  // move down
 				if (wnd.kbd.KeyIsPressed('W')) { snk2.SetSnakeVelocity({ 0, -1 }); } // move up
-				if (wnd.kbd.KeyIsPressed('Z')) { snk2MovePeriod *= 1.05f; }			// slower
-				if (wnd.kbd.KeyIsPressed('Q')) { snk2MovePeriod /= 1.05f; }			// faster
-				if (wnd.kbd.KeyIsPressed('E')) { snk2.SetSnakeVelocity({0,0}); }	// stall
-				if (wnd.kbd.KeyIsPressed('S')) { snk2.JumpOn(); }
+				if (wnd.kbd.KeyIsPressed('Z')) { snk2MovePeriod *= 1.05f; }          // slower
+				if (wnd.kbd.KeyIsPressed('Q')) { snk2MovePeriod /= 1.05f; }          // faster
+				if (wnd.kbd.KeyIsPressed('E')) { snk2.SetSnakeVelocity({0,0}); }     // stall
+				if (wnd.kbd.KeyIsPressed('S')) { snk2.JumpOn(); }                    // jump
 			}
 		}
 
@@ -193,14 +194,13 @@ void Game::UpdateModel()
 					brd.Spawn(Board::contentType::food, rng, 1);
 					brd.Spawn(Board::contentType::barrier, rng, 1);
 					brd.SetCellContent(new_loc1, Board::contentType::empty);
-					// Increase player 1's score
 					player1Score++;
 				}
 
 				if (brd.GetCellContent(new_loc1) == Board::contentType::poison)
 				{
 					brd.SetCellContent(new_loc1, Board::contentType::empty);
-					snk1MovePeriod /= gVar.speedupRate; // Only affects snake 1
+					snk1MovePeriod /= gVar.speedupRate;
 				}
 
 				// Collision detection for snake 1
@@ -219,7 +219,6 @@ void Game::UpdateModel()
 
 				if (snake1Collision)
 				{
-					// Player 1 crashed, reset their score
 					player1Score = 0;
 					crashedPlayer = 1;
 					gameOver = true;
@@ -247,14 +246,13 @@ void Game::UpdateModel()
 					brd.Spawn(Board::contentType::food, rng, 1);
 					brd.Spawn(Board::contentType::barrier, rng, 1);
 					brd.SetCellContent(new_loc2, Board::contentType::empty);
-					// Increase player 2's score
 					player2Score++;
 				}
 
 				if (brd.GetCellContent(new_loc2) == Board::contentType::poison)
 				{
 					brd.SetCellContent(new_loc2, Board::contentType::empty);
-					snk2MovePeriod /= gVar.speedupRate; // Only affects snake 2
+					snk2MovePeriod /= gVar.speedupRate;
 				}
 
 				// Collision detection for snake 2
@@ -273,12 +271,10 @@ void Game::UpdateModel()
 
 				if (snake2Collision)
 				{
-					// Player 2 crashed, reset their score
 					player2Score = 0;
 					if (crashedPlayer == 1)
 					{
-						// Both players crashed
-						crashedPlayer = 3;
+						crashedPlayer = 3; // Both crashed
 					}
 					else
 					{
@@ -299,28 +295,25 @@ void Game::UpdateModel()
 		}
 	}
 	
-	//handle game (re)start
+	// Handle game (re)start
+	if (wnd.kbd.KeyIsPressed(VK_RETURN))
 	{
-		if (wnd.kbd.KeyIsPressed(VK_RETURN))
+		isStarted = true;
+		gameOver = false;
+		
+		// Reset speeds to initial values
+		// Only reset speed for players that crashed
+		if (crashedPlayer == 1 || crashedPlayer == 3)
 		{
-			isStarted = true;
-			gameOver = false;
-			//snk.Reset();
-			// Reset speeds to initial values
-			// Only reset speed for players that crashed
-			if (crashedPlayer == 1 || crashedPlayer == 3) // Player 1 crashed or both crashed
-			{
-				snk1MovePeriod = gVar.initialSpeed;
-				snk1.Reset();
-				
-			}
-			if (crashedPlayer == 2 || crashedPlayer == 3) // Player 2 crashed or both crashed
-			{
-				snk2MovePeriod = gVar.initialSpeed;
-				snk2.Reset();
-			}
-			crashedPlayer = 0;
+			snk1MovePeriod = gVar.initialSpeed;
+			snk1.Reset();
 		}
+		if (crashedPlayer == 2 || crashedPlayer == 3)
+		{
+			snk2MovePeriod = gVar.initialSpeed;
+			snk2.Reset();
+		}
+		crashedPlayer = 0;
 	}
 }
 
@@ -330,16 +323,15 @@ void Game::ComposeFrame()
 	{
 		brd.DrawBorders();
 		brd.DrawCellContents();
-		snk1.Draw(brd); // Draw first snake
+		snk1.Draw(brd);
 		if (gVar.numPlayers == 2)
 		{
-			snk2.Draw(brd); // Draw second snake
+			snk2.Draw(brd);
 		}
+		
 		// Draw score displays
-		// Player 1 score (top-right)
 		SpriteCodex::DrawNumber(player1Score, gfx.ScreenWidth - 50, 10, gfx);
-
-		// Player 2 score (top-left) - only in two player mode
+		
 		if (gVar.numPlayers == 2)
 		{
 			SpriteCodex::DrawNumber(player2Score, 10, 10, gfx);
@@ -349,10 +341,41 @@ void Game::ComposeFrame()
 	{
 		SpriteCodex::DrawTitle(100, 100, gfx);
 		
+		// Draw control instructions with readable text
+		SpriteCodex::DrawString("PRESS ENTER TO START", 280, 250, Colors::White, gfx);
+		
+		// Player controls
+		if (gVar.numPlayers == 1)
+		{
+			SpriteCodex::DrawString("PLAYER 1 CONTROLS:", 50, 300, Colors::Magenta, gfx);
+			SpriteCodex::DrawString("NUMPAD 8246 - MOVE", 50, 315, Colors::White, gfx);
+			SpriteCodex::DrawString("NUMPAD 5 - JUMP", 50, 330, Colors::White, gfx);
+		}
+		else if (gVar.numPlayers == 2)
+		{
+			SpriteCodex::DrawString("PLAYER 1:", 50, 300, Colors::Magenta, gfx);
+			SpriteCodex::DrawString("NUMPAD 8246 - MOVE", 50, 315, Colors::White, gfx);
+			SpriteCodex::DrawString("NUMPAD 5 - JUMP", 50, 330, Colors::White, gfx);
+			
+			SpriteCodex::DrawString("PLAYER 2:", 450, 300, Colors::Green, gfx);
+			SpriteCodex::DrawString("WASD - MOVE", 450, 315, Colors::White, gfx);
+			SpriteCodex::DrawString("S - JUMP", 450, 330, Colors::White, gfx);
+		}
+		
+		// Networking instructions
+		if (!networkingEnabled)
+		{
+			SpriteCodex::DrawString("PRESS N FOR NETWORK MODE", 240, 380, Colors::Cyan, gfx);
+		}
+		else
+		{
+			SpriteCodex::DrawString("SEARCHING FOR PLAYERS...", 250, 380, Colors::Green, gfx);
+		}
+		
 		// Display network peer detection prompt
 		if (networkPeerDetected && networkPromptShown)
 		{
-			// Draw semi-transparent overlay
+			// Draw overlay
 			gfx.DrawRect(150, 200, 650, 400, Color(50, 50, 50));
 			
 			// Draw border
@@ -361,24 +384,20 @@ void Game::ComposeFrame()
 			gfx.DrawRect(150, 200, 155, 400, Colors::Yellow);  // Left
 			gfx.DrawRect(645, 200, 650, 400, Colors::Yellow);  // Right
 			
-			// Draw simple text indicators using colored blocks
-			// "NETWORK PLAYER FOUND" indicator (yellow bars)
-			for (int i = 0; i < 15; i++)
-			{
-				gfx.DrawRect(180 + i*30, 220, 180 + i*30 + 25, 240, Colors::Yellow);
-			}
+			// Draw text
+			SpriteCodex::DrawString("NETWORK PLAYER FOUND", 230, 220, Colors::Yellow, gfx);
 			
-			// "Y = ACCEPT" indicator (green blocks)
-			gfx.DrawRect(200, 280, 230, 310, Colors::Green);    // Y shape
-			gfx.DrawRect(215, 295, 230, 310, Colors::Green);
-			gfx.DrawRect(200, 295, 215, 310, Colors::Green);
-			gfx.DrawRect(350, 280, 550, 310, Colors::Green);    // ACCEPT bar
+			// Display IP addresses
+			std::string localIP = "YOUR IP: " + networkMgr.GetLocalAddress();
+			std::string peerIP = "PEER IP: " + networkMgr.GetPeerAddress();
+			SpriteCodex::DrawString(localIP, 200, 250, Colors::Cyan, gfx);
+			SpriteCodex::DrawString(peerIP, 200, 270, Colors::Green, gfx);
 			
-			// "N = DECLINE" indicator (red blocks)
-			gfx.DrawRect(200, 330, 230, 360, Colors::Red);       // N shape
-			gfx.DrawRect(350, 330, 550, 360, Colors::Red);       // DECLINE bar
+			SpriteCodex::DrawString("PRESS Y TO ACCEPT", 250, 310, Colors::Green, gfx);
+			SpriteCodex::DrawString("PRESS O TO DECLINE", 245, 350, Colors::Red, gfx);
 		}
 	}
+	
 	if (gameOver)
 	{
 		SpriteCodex::DrawGameOver(200, 200, gfx);
@@ -442,10 +461,6 @@ void Game::ApplyGameStateSnapshot(const GameStateSnapshot& state)
 	DeserializeSnake(snk2, state.snake2Segments, state.snake2SegmentCount,
 					 state.snake2VelocityX, state.snake2VelocityY);
 	snk2MovePeriod = state.snake2MovePeriod;
-
-	// Update board contents (food, poison, barriers)
-	// Clear existing items first would require Board API changes
-	// For now, the host controls spawning and we rely on state sync
 }
 
 GameStateSnapshot Game::CreateGameStateSnapshot()
@@ -469,8 +484,7 @@ GameStateSnapshot Game::CreateGameStateSnapshot()
 	state.gameOver = gameOver ? 1 : 0;
 	state.crashedPlayer = crashedPlayer;
 
-	// Board state - for simplicity, we'll skip serializing all board contents
-	// The host controls spawning, so clients will see updates through snake interactions
+	// Board state
 	state.foodCount = 0;
 	state.poisonCount = 0;
 	state.barrierCount = 0;
@@ -484,8 +498,7 @@ void Game::SerializeSnake(const Snake& snake, SnakeSegment* segments, uint16_t& 
 	vx = vel.x;
 	vy = vel.y;
 
-	// We need access to snake segments - this requires Snake API changes
-	// For now, we'll serialize just the head position
+	// Serialize head position
 	Location head = snake.GetCurrentHeadLocation();
 	count = 1;
 	segments[0].x = head.x;

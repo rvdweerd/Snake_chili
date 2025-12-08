@@ -21,7 +21,7 @@ public:
 
 public:
 	Board() = default;
-	Board(Graphics& gfx_in, class Snake& snk_in, GameVariables& gVar);
+	Board(Graphics& gfx_in, class Snake& snk1_in, class Snake& snk2_in, GameVariables& gVar);
 	void DrawCell(const Location& loc, Color c) const;
 	void DrawBorders();
 	void DrawCellContents();
@@ -38,8 +38,8 @@ private:
 	const Location startPos = { 10,10 };
 	static constexpr int cellPadding = 1;
 	Graphics& gfx;
-	Snake& snk;
-	//static constexpr int width =  35;
+	Snake& snk1;
+	Snake& snk2;
 	int width;
 	int height;
 	
