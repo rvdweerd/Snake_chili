@@ -170,28 +170,17 @@ void Game::UpdateModel()
 			break;
 			
 		case NetworkState::Connecting:
-			SpriteCodex::DrawString("CONNECTING...", 260, 250, Colors::Yellow, gfx);
-			
-			// Animated dots
+			// Wait for onConnected callback to change networkingEnabled
+			if (networkingEnabled)
 			{
-				int dots = (static_cast<int>(networkSearchTimer * 3) % 4);
-				std::string dotStr(dots, '.');
-				SpriteCodex::DrawString(dotStr, 410, 250, Colors::Yellow, gfx);
+				networkState = NetworkState::Connected;
+				lastPingTime = 0.0f;
+				missedPings = 0;
 			}
 			break;
 			
 		case NetworkState::Connected:
-			SpriteCodex::DrawString("CONNECTED!", 310, 230, Colors::Green, gfx);
-			SpriteCodex::DrawString("PRESS ENTER TO START", 260, 270, Colors::White, gfx);
-			
-			// Show who you're playing with
-			{
-				std::string opponent = "OPPONENT: " + networkMgr.GetPeerAddress();
-				SpriteCodex::DrawString(opponent, 250, 310, Colors::Cyan, gfx);
-				
-				std::string yourRole = (isNetworkHost) ? "YOU ARE: PLAYER 1" : "YOU ARE: PLAYER 2";
-				SpriteCodex::DrawString(yourRole, 270, 340, Colors::Magenta, gfx);
-			}
+			// Ready to play! Waiting for user to press ENTER
 			break;
 			
 		case NetworkState::Failed:
@@ -450,6 +439,16 @@ void Game::ComposeFrame()
 		{
 			std::string statusText = isNetworkHost ? "HOST" : "CLIENT";
 			SpriteCodex::DrawString(statusText, gfx.ScreenWidth - 100, gfx.ScreenHeight - 20, Colors::Cyan, gfx);
+			
+			// DEBUG: Show which controls are active
+			bool shouldControlSnake1 = !networkingEnabled || isNetworkHost;
+			bool shouldControlSnake2 = !networkingEnabled || !isNetworkHost;
+			
+			std::string debugInfo1 = shouldControlSnake1 ? "P1:LOCAL" : "P1:NETWORK";
+			std::string debugInfo2 = shouldControlSnake2 ? "P2:LOCAL" : "P2:NETWORK";
+			
+			SpriteCodex::DrawString(debugInfo1, 10, gfx.ScreenHeight - 40, Colors::Yellow, gfx);
+			SpriteCodex::DrawString(debugInfo2, 10, gfx.ScreenHeight - 20, Colors::Yellow, gfx);
 		}
 	}
 	else  // Title screen
@@ -536,14 +535,7 @@ void Game::ComposeFrame()
 			break;
 			
 		case NetworkState::Connecting:
-			SpriteCodex::DrawString("CONNECTING...", 260, 250, Colors::Yellow, gfx);
-			
-			// Animated dots
-			{
-				int dots = (static_cast<int>(networkSearchTimer * 3) % 4);
-				std::string dotStr(dots, '.');
-				SpriteCodex::DrawString(dotStr, 410, 250, Colors::Yellow, gfx);
-			}
+			// Intentional blank - UI handled in Connected state
 			break;
 			
 		case NetworkState::Connected:
