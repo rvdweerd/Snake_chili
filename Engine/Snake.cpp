@@ -183,6 +183,14 @@ void Snake::SetSegments(const Location* locations, int segmentCount)
 	// Resize to match received segment count
 	if (segmentCount > 0 && segmentCount < nSegmentsMax)
 	{
+		static int setSegmentsCount = 0;
+		if (++setSegmentsCount % 40 == 0)
+		{
+			std::string debugMsg = "Snake::SetSegments: Resizing to " + std::to_string(segmentCount) + 
+			                       " segments (was " + std::to_string(segments.size()) + ")\n";
+			OutputDebugStringA(debugMsg.c_str());
+		}
+		
 		segments.resize(segmentCount);
 		
 		// Update all segment locations
@@ -190,6 +198,23 @@ void Snake::SetSegments(const Location* locations, int segmentCount)
 		{
 			segments[i].loc = locations[i];
 		}
+		
+		if (setSegmentsCount % 40 == 0)
+		{
+			std::string posMsg = "  First segment now at: (" + std::to_string(segments[0].loc.x) + 
+			                     ", " + std::to_string(segments[0].loc.y) + ")\n";
+			OutputDebugStringA(posMsg.c_str());
+		}
+	}
+	else if (segmentCount <= 0)
+	{
+		OutputDebugStringA("Snake::SetSegments: ERROR - segmentCount <= 0\n");
+	}
+	else
+	{
+		std::string errorMsg = "Snake::SetSegments: ERROR - segmentCount too large: " + 
+		                       std::to_string(segmentCount) + " (max=" + std::to_string(nSegmentsMax) + ")\n";
+		OutputDebugStringA(errorMsg.c_str());
 	}
 }
 

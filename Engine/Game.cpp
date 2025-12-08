@@ -451,6 +451,21 @@ void Game::ComposeFrame()
 {
 	if (isStarted)
 	{
+		// DEBUG: Log occasionally to verify drawing
+		static int frameCount = 0;
+		if (++frameCount % 300 == 0) // Every ~5 seconds at 60 FPS
+		{
+			std::string debugMsg = "ComposeFrame: Drawing - Snake1 has " + std::to_string(snk1.GetSegmentCount()) + 
+			                       " segments, Snake2 has " + std::to_string(snk2.GetSegmentCount()) + " segments\n";
+			OutputDebugStringA(debugMsg.c_str());
+			
+			if (networkingEnabled)
+			{
+				std::string netMsg = "  Network mode: " + std::string(isNetworkHost ? "HOST" : "CLIENT") + "\n";
+				OutputDebugStringA(netMsg.c_str());
+			}
+		}
+		
 		brd.DrawBorders();
 		brd.DrawCellContents();
 		snk1.Draw(brd);
@@ -682,21 +697,36 @@ void Game::ApplyRemoteInput(const InputMessage& msg)
 
 void Game::ApplyGameStateSnapshot(const GameStateSnapshot& state)
 {
+	// DEBUG: Log EVERY update to diagnose the issue
+	static int updateCount = 0;
+	updateCount++;
+	
+	if (updateCount == 1)
+	{
+		OutputDebugStringA("ApplyGameStateSnapshot: FIRST CALL - callback is working!\n");
+	}
+	
+	if (updateCount % 20 == 0) // Every 20 updates (~1 second at 20Hz)
+	{
+		std::string debugMsg = "ApplyGameStateSnapshot: Update #" + std::to_string(updateCount) + 
+		                       " - Snake1: " + std::to_string(state.snake1SegmentCount) + " segments, " +
+		                       "Snake2: " + std::to_string(state.snake2SegmentCount) + " segments\n";
+		OutputDebugStringA(debugMsg.c_str());
+		
+		// Log first segment position for snake 1
+		if (state.snake1SegmentCount > 0)
+		{
+			std::string posMsg = "  Snake1 head at: (" + std::to_string(state.snake1Segments[0].x) + ", " + 
+			                     std::to_string(state.snake1Segments[0].y) + ")\n";
+			OutputDebugStringA(posMsg.c_str());
+		}
+	}
+
 	// Client applies received game state
 	player1Score = state.player1Score;
 	player2Score = state.player2Score;
 	gameOver = state.gameOver != 0;
 	crashedPlayer = state.crashedPlayer;
-
-	// DEBUG: Output to verify we're receiving updates
-	static int updateCount = 0;
-	if (++updateCount % 60 == 0) // Every 60 updates (~3 seconds at 20Hz)
-	{
-		OutputDebugStringA("CLIENT: Received game state update\n");
-		std::string debugMsg = "Snake1 segments: " + std::to_string(state.snake1SegmentCount) + 
-		                       ", Snake2 segments: " + std::to_string(state.snake2SegmentCount) + "\n";
-		OutputDebugStringA(debugMsg.c_str());
-	}
 
 	// Update snake 1
 	DeserializeSnake(snk1, state.snake1Segments, state.snake1SegmentCount, 
@@ -707,6 +737,14 @@ void Game::ApplyGameStateSnapshot(const GameStateSnapshot& state)
 	DeserializeSnake(snk2, state.snake2Segments, state.snake2SegmentCount,
 					 state.snake2VelocityX, state.snake2VelocityY);
 	snk2MovePeriod = state.snake2MovePeriod;
+	
+	// Verify snakes were updated
+	if (updateCount % 20 == 0)
+	{
+		std::string verifyMsg = "  After deserialize: Snake1 has " + std::to_string(snk1.GetSegmentCount()) + 
+		                        " segments, Snake2 has " + std::to_string(snk2.GetSegmentCount()) + " segments\n";
+		OutputDebugStringA(verifyMsg.c_str());
+	}
 }
 
 GameStateSnapshot Game::CreateGameStateSnapshot()
@@ -758,6 +796,14 @@ void Game::SerializeSnake(const Snake& snake, SnakeSegment* segments, uint16_t& 
 
 void Game::DeserializeSnake(Snake& snake, const SnakeSegment* segments, uint16_t count, int8_t vx, int8_t vy)
 {
+	static int deserializeCount = 0;
+	if (++deserializeCount % 40 == 0) // Log occasionally
+	{
+		std::string debugMsg = "DeserializeSnake: count=" + std::to_string(count) + 
+		                       ", velocity=(" + std::to_string(vx) + "," + std::to_string(vy) + ")\n";
+		OutputDebugStringA(debugMsg.c_str());
+	}
+	
 	if (count > 0)
 	{
 		// Convert SnakeSegments to Locations
@@ -769,6 +815,16 @@ void Game::DeserializeSnake(Snake& snake, const SnakeSegment* segments, uint16_t
 		
 		// Apply all segments to the snake
 		snake.SetSegments(locations.data(), count);
+		
+		if (deserializeCount % 40 == 0)
+		{
+			std::string resultMsg = "  SetSegments called with " + std::to_string(count) + " locations\n";
+			OutputDebugStringA(resultMsg.c_str());
+		}
+	}
+	else
+	{
+		OutputDebugStringA("DeserializeSnake: WARNING - count is 0!\n");
 	}
 	
 	// Update velocity

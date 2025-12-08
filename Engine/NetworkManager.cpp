@@ -473,6 +473,8 @@ void NetworkManager::NetworkThreadFunc()
 	std::chrono::steady_clock::time_point lastAliveCheck = std::chrono::steady_clock::now();
 	const int connectionTimeoutSeconds = 60; // Increased to 60 seconds for better robustness
 	
+	OutputDebugStringA("NetworkThreadFunc: Started\n");
+	
 	while (pImpl->running)
 	{
 		if (pImpl->connectionState != ConnectionState::Connected)
@@ -495,6 +497,7 @@ void NetworkManager::NetworkThreadFunc()
 			uint32_t* magic = (uint32_t*)buffer;
 			if (*magic != GAME_MAGIC)
 			{
+				OutputDebugStringA("NetworkThreadFunc: Invalid magic number\n");
 				continue;
 			}
 
@@ -512,6 +515,7 @@ void NetworkManager::NetworkThreadFunc()
 			}
 			else if (received == sizeof(StartCommand))
 			{
+				OutputDebugStringA("NetworkThreadFunc: Received StartCommand\n");
 				StartCommand cmd = *(StartCommand*)buffer;
 				
 				std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
@@ -523,18 +527,48 @@ void NetworkManager::NetworkThreadFunc()
 			else if (received == sizeof(Heartbeat))
 			{
 				// Heartbeat received - connection is alive
-				// We already updated lastReceiveTime above, nothing else to do
+				static int heartbeatCount = 0;
+				if (++heartbeatCount % 10 == 0)
+				{
+					OutputDebugStringA("NetworkThreadFunc: Heartbeat received\n");
+				}
 			}
 			else if (received == sizeof(GameStateSnapshot))
 			{
+				static int stateCount = 0;
+				if (++stateCount % 60 == 0) // Log every 60 packets (~3 seconds at 20Hz)
+				{
+					std::string debugMsg = "NetworkThreadFunc: Received GameStateSnapshot #" + std::to_string(stateCount) + 
+					                       ", size=" + std::to_string(received) + " bytes\n";
+					OutputDebugStringA(debugMsg.c_str());
+				}
+				
 				GameStateSnapshot state = *(GameStateSnapshot*)buffer;
 				state.sequence = ntohl(state.sequence);
 				
-				std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
-				if (pImpl->onGameStateReceived)
+				// DEBUG: Verify callback is registered
 				{
-					pImpl->onGameStateReceived(state);
+					std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+					if (!pImpl->onGameStateReceived)
+					{
+						OutputDebugStringA("NetworkThreadFunc: ERROR - onGameStateReceived callback is NULL!\n");
+					}
+					else
+					{
+						// Callback exists, invoke it
+						pImpl->onGameStateReceived(state);
+						
+						if (stateCount % 60 == 0)
+						{
+							OutputDebugStringA("NetworkThreadFunc: Callback invoked successfully\n");
+						}
+					}
 				}
+			}
+			else
+			{
+				std::string debugMsg = "NetworkThreadFunc: Unknown message size: " + std::to_string(received) + " bytes\n";
+				OutputDebugStringA(debugMsg.c_str());
 			}
 		}
 
@@ -550,6 +584,8 @@ void NetworkManager::NetworkThreadFunc()
 				pImpl->hasPeer = false;
 				pImpl->connectionState = ConnectionState::Disconnected;
 				
+				OutputDebugStringA("NetworkThreadFunc: Connection timeout!\n");
+				
 				std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
 				if (pImpl->onDisconnected)
 				{
@@ -563,4 +599,6 @@ void NetworkManager::NetworkThreadFunc()
 
 		std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60Hz
 	}
+	
+	OutputDebugStringA("NetworkThreadFunc: Exiting\n");
 }
