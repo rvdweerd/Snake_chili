@@ -32,6 +32,11 @@ public:
 	Location GetNextHeadLocation(const Location& delta, Board& brd) const;
 	Location GetSnakeVelocity() const;
 	void SetSnakeVelocity(const Location new_velocity);
+	
+	// Network serialization methods
+	int GetSegmentCount() const;
+	Location GetSegmentLocation(int index) const;
+	void SetSegments(const Location* locations, int segmentCount);
 
 private:
 	static constexpr int jumpSize = 3;

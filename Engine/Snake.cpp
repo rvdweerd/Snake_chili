@@ -168,6 +168,31 @@ void Snake::Segment::Draw(Board& brd) const
 	brd.DrawCell(loc, color);
 }
 
+int Snake::GetSegmentCount() const
+{
+	return static_cast<int>(segments.size());
+}
+
+Location Snake::GetSegmentLocation(int index) const
+{
+	return segments[index].loc;
+}
+
+void Snake::SetSegments(const Location* locations, int segmentCount)
+{
+	// Resize to match received segment count
+	if (segmentCount > 0 && segmentCount < nSegmentsMax)
+	{
+		segments.resize(segmentCount);
+		
+		// Update all segment locations
+		for (int i = 0; i < segmentCount; i++)
+		{
+			segments[i].loc = locations[i];
+		}
+	}
+}
+
 
 
 

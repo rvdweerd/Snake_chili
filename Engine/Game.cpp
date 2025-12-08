@@ -727,19 +727,33 @@ void Game::SerializeSnake(const Snake& snake, SnakeSegment* segments, uint16_t& 
 	vx = vel.x;
 	vy = vel.y;
 
-	// Serialize head position
-	Location head = snake.GetCurrentHeadLocation();
-	count = 1;
-	segments[0].x = head.x;
-	segments[0].y = head.y;
+	// Serialize ALL segments (up to max allowed)
+	int segmentCount = snake.GetSegmentCount();
+	count = static_cast<uint16_t>(std::min(segmentCount, 500)); // Cap at max array size
+	
+	for (int i = 0; i < count; i++)
+	{
+		Location loc = snake.GetSegmentLocation(i);
+		segments[i].x = static_cast<int16_t>(loc.x);
+		segments[i].y = static_cast<int16_t>(loc.y);
+	}
 }
 
 void Game::DeserializeSnake(Snake& snake, const SnakeSegment* segments, uint16_t count, int8_t vx, int8_t vy)
 {
 	if (count > 0)
 	{
-		Location newHead = { segments[0].x, segments[0].y };
-		snake.MoveTo(newHead);
+		// Convert SnakeSegments to Locations
+		std::vector<Location> locations(count);
+		for (uint16_t i = 0; i < count; i++)
+		{
+			locations[i] = { static_cast<int>(segments[i].x), static_cast<int>(segments[i].y) };
+		}
+		
+		// Apply all segments to the snake
+		snake.SetSegments(locations.data(), count);
 	}
+	
+	// Update velocity
 	snake.SetSnakeVelocity({ vx, vy });
 }
