@@ -640,6 +640,13 @@ void Game::UpdateNetworking()
 			GameStateSnapshot state = CreateGameStateSnapshot();
 			networkMgr.SendGameState(state);
 			networkSyncCounter = 0.0f;
+			
+			// DEBUG: Output every second
+			static int sendCount = 0;
+			if (++sendCount % 20 == 0) // Every 20 sends (~1 second at 20Hz)
+			{
+				OutputDebugStringA("HOST: Sending game state update\n");
+			}
 		}
 	}
 	else
@@ -680,6 +687,16 @@ void Game::ApplyGameStateSnapshot(const GameStateSnapshot& state)
 	player2Score = state.player2Score;
 	gameOver = state.gameOver != 0;
 	crashedPlayer = state.crashedPlayer;
+
+	// DEBUG: Output to verify we're receiving updates
+	static int updateCount = 0;
+	if (++updateCount % 60 == 0) // Every 60 updates (~3 seconds at 20Hz)
+	{
+		OutputDebugStringA("CLIENT: Received game state update\n");
+		std::string debugMsg = "Snake1 segments: " + std::to_string(state.snake1SegmentCount) + 
+		                       ", Snake2 segments: " + std::to_string(state.snake2SegmentCount) + "\n";
+		OutputDebugStringA(debugMsg.c_str());
+	}
 
 	// Update snake 1
 	DeserializeSnake(snk1, state.snake1Segments, state.snake1SegmentCount, 
