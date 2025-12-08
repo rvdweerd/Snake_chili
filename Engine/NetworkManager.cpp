@@ -204,6 +204,28 @@ void NetworkManager::SendGameState(const GameStateSnapshot& state)
 	GameStateSnapshot netState = state;
 	netState.magic = GAME_MAGIC;
 	netState.sequence = htonl(pImpl->sendSequence++);
+	
+	// CRITICAL FIX: Convert all multi-byte fields to network byte order
+	netState.snake1SegmentCount = htons(netState.snake1SegmentCount);
+	netState.snake2SegmentCount = htons(netState.snake2SegmentCount);
+	netState.player1Score = htons(netState.player1Score);
+	netState.player2Score = htons(netState.player2Score);
+	netState.foodCount = htons(netState.foodCount);
+	netState.poisonCount = htons(netState.poisonCount);
+	netState.barrierCount = htons(netState.barrierCount);
+	
+	// Convert all segment positions to network byte order
+	for (int i = 0; i < state.snake1SegmentCount && i < 500; i++)
+	{
+		netState.snake1Segments[i].x = htons(netState.snake1Segments[i].x);
+		netState.snake1Segments[i].y = htons(netState.snake1Segments[i].y);
+	}
+	
+	for (int i = 0; i < state.snake2SegmentCount && i < 500; i++)
+	{
+		netState.snake2Segments[i].x = htons(netState.snake2Segments[i].x);
+		netState.snake2Segments[i].y = htons(netState.snake2Segments[i].y);
+	}
 
 	sendto(pImpl->gameSock, (char*)&netState, sizeof(netState), 0,
 		   (sockaddr*)&pImpl->peerAddr, sizeof(pImpl->peerAddr));
@@ -541,15 +563,38 @@ void NetworkManager::NetworkThreadFunc()
 				GameStateSnapshot state = *(GameStateSnapshot*)buffer;
 				state.sequence = ntohl(state.sequence);
 				
-				// DEBUG: Log raw packet data BEFORE sending to callback
+				// CRITICAL FIX: Convert all multi-byte fields FROM network byte order
+				state.snake1SegmentCount = ntohs(state.snake1SegmentCount);
+				state.snake2SegmentCount = ntohs(state.snake2SegmentCount);
+				state.player1Score = ntohs(state.player1Score);
+				state.player2Score = ntohs(state.player2Score);
+				state.foodCount = ntohs(state.foodCount);
+				state.poisonCount = ntohs(state.poisonCount);
+				state.barrierCount = ntohs(state.barrierCount);
+				
+				// Convert all segment positions FROM network byte order
+				for (int i = 0; i < state.snake1SegmentCount && i < 500; i++)
+				{
+					state.snake1Segments[i].x = ntohs(state.snake1Segments[i].x);
+					state.snake1Segments[i].y = ntohs(state.snake1Segments[i].y);
+				}
+				
+				for (int i = 0; i < state.snake2SegmentCount && i < 500; i++)
+				{
+					state.snake2Segments[i].x = ntohs(state.snake2Segments[i].x);
+					state.snake2Segments[i].y = ntohs(state.snake2Segments[i].y);
+				}
+				
+				// DEBUG: Log raw packet data AFTER conversion
 				if (stateCount % 60 == 0) // Log every 60 packets (~3 seconds at 20Hz)
 				{
 					std::string debugMsg = "NetworkThreadFunc: Received GameStateSnapshot #" + std::to_string(stateCount) + 
 					                       ", size=" + std::to_string(received) + " bytes\n";
 					OutputDebugStringA(debugMsg.c_str());
 					
-					std::string dataMsg = "  RAW packet data - Snake1 segments: " + std::to_string(state.snake1SegmentCount) + 
-					                      ", Snake2 segments: " + std::to_string(state.snake2SegmentCount) + "\n";
+					std::string dataMsg = "  CONVERTED data - Snake1 segments: " + std::to_string(state.snake1SegmentCount) + 
+					                      ", Snake2 segments: " + std::to_string(state.snake2SegmentCount) + 
+					                      ", gameOver: " + std::to_string(state.gameOver) + "\n";
 					OutputDebugStringA(dataMsg.c_str());
 				}
 				

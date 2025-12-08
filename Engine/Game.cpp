@@ -793,6 +793,16 @@ GameStateSnapshot Game::CreateGameStateSnapshot()
 	state.poisonCount = 0;
 	state.barrierCount = 0;
 
+	// DEBUG: Log what we're about to send
+	static int createCount = 0;
+	if (++createCount % 40 == 0)
+	{
+		std::string debugMsg = "CreateGameStateSnapshot: snake1SegmentCount=" + std::to_string(state.snake1SegmentCount) +
+		                       ", snake2SegmentCount=" + std::to_string(state.snake2SegmentCount) +
+		                       ", gameOver=" + std::to_string(state.gameOver) + "\n";
+		OutputDebugStringA(debugMsg.c_str());
+	}
+
 	return state;
 }
 
