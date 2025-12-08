@@ -536,15 +536,22 @@ void NetworkManager::NetworkThreadFunc()
 			else if (received == sizeof(GameStateSnapshot))
 			{
 				static int stateCount = 0;
-				if (++stateCount % 60 == 0) // Log every 60 packets (~3 seconds at 20Hz)
+				stateCount++;
+				
+				GameStateSnapshot state = *(GameStateSnapshot*)buffer;
+				state.sequence = ntohl(state.sequence);
+				
+				// DEBUG: Log raw packet data BEFORE sending to callback
+				if (stateCount % 60 == 0) // Log every 60 packets (~3 seconds at 20Hz)
 				{
 					std::string debugMsg = "NetworkThreadFunc: Received GameStateSnapshot #" + std::to_string(stateCount) + 
 					                       ", size=" + std::to_string(received) + " bytes\n";
 					OutputDebugStringA(debugMsg.c_str());
+					
+					std::string dataMsg = "  RAW packet data - Snake1 segments: " + std::to_string(state.snake1SegmentCount) + 
+					                      ", Snake2 segments: " + std::to_string(state.snake2SegmentCount) + "\n";
+					OutputDebugStringA(dataMsg.c_str());
 				}
-				
-				GameStateSnapshot state = *(GameStateSnapshot*)buffer;
-				state.sequence = ntohl(state.sequence);
 				
 				// DEBUG: Verify callback is registered
 				{
