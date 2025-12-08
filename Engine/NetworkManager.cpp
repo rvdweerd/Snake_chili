@@ -320,9 +320,6 @@ void NetworkManager::DeclineConnection()
 		// Clear pending peer and return to discovering state
 		pImpl->hasPendingPeer = false;
 		pImpl->connectionState = ConnectionState::Discovering;
-		
-		// Send optional rejection message to peer (future enhancement)
-		// This allows the peer to know the connection was declined
 	}
 }
 
@@ -493,7 +490,7 @@ void NetworkManager::NetworkThreadFunc()
 {
 	char buffer[65536];
 	std::chrono::steady_clock::time_point lastAliveCheck = std::chrono::steady_clock::now();
-	const int connectionTimeoutSeconds = 60; // Increased to 60 seconds for better robustness
+	const int connectionTimeoutSeconds = 60;
 	
 	OutputDebugStringA("NetworkThreadFunc: Started\n");
 	
@@ -586,7 +583,7 @@ void NetworkManager::NetworkThreadFunc()
 				}
 				
 				// DEBUG: Log raw packet data AFTER conversion
-				if (stateCount % 60 == 0) // Log every 60 packets (~3 seconds at 20Hz)
+				if (stateCount % 60 == 0)
 				{
 					std::string debugMsg = "NetworkThreadFunc: Received GameStateSnapshot #" + std::to_string(stateCount) + 
 					                       ", size=" + std::to_string(received) + " bytes\n";
@@ -598,7 +595,7 @@ void NetworkManager::NetworkThreadFunc()
 					OutputDebugStringA(dataMsg.c_str());
 				}
 				
-				// DEBUG: Verify callback is registered
+				// Invoke callback
 				{
 					std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
 					if (!pImpl->onGameStateReceived)
@@ -607,7 +604,6 @@ void NetworkManager::NetworkThreadFunc()
 					}
 					else
 					{
-						// Callback exists, invoke it
 						pImpl->onGameStateReceived(state);
 						
 						if (stateCount % 60 == 0)
@@ -624,7 +620,7 @@ void NetworkManager::NetworkThreadFunc()
 			}
 		}
 
-		// Check for timeout with proper interval
+		// Check for timeout
 		auto now = std::chrono::steady_clock::now();
 		auto timeSinceLastReceive = std::chrono::duration_cast<std::chrono::seconds>(now - lastAliveCheck).count();
 		
