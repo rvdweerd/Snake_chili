@@ -136,6 +136,11 @@ Location Snake::GetSnakeVelocity() const
 	return snakeVelocity * jumpMultiplier;
 }
 
+Location Snake::GetBaseVelocity() const
+{
+	return snakeVelocity;  // Return velocity without jump multiplier
+}
+
 void Snake::SetSnakeVelocity(const Location new_velocity)
 {
 	if ( segments.size() == 1 )
@@ -228,6 +233,12 @@ void Snake::SetSegments(const Location* locations, int segmentCount)
 		OutputDebugStringA(errorMsg.c_str());
 	}
 }
+
+
+
+
+
+
 
 
 

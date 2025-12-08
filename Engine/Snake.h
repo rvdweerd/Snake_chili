@@ -31,6 +31,7 @@ public:
 	Location GetCurrentHeadLocation() const;
 	Location GetNextHeadLocation(const Location& delta, Board& brd) const;
 	Location GetSnakeVelocity() const;
+	Location GetBaseVelocity() const;  // Get velocity without jump multiplier
 	void SetSnakeVelocity(const Location new_velocity);
 	
 	// Network serialization methods

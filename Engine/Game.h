@@ -100,6 +100,7 @@ private:
 	Location lastSentVelocity1 = {0, 0};
 	Location lastSentVelocity2 = {0, 0};
 	bool initialSyncSent = false;  // Track if we've sent initial full state
+	bool pendingJump2 = false;     // Track if client wants to jump (for network sync)
 	
 	// Network state management
 	NetworkState networkState = NetworkState::Disabled;

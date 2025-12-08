@@ -305,7 +305,16 @@ void Game::UpdateModel()
 				if (wnd.kbd.KeyIsPressed('Z')) { snk2MovePeriod *= 1.05f; }          // slower
 				if (wnd.kbd.KeyIsPressed('Q')) { snk2MovePeriod /= 1.05f; }          // faster
 				if (wnd.kbd.KeyIsPressed('E')) { snk2.SetSnakeVelocity({0,0}); }     // stall
-				if (wnd.kbd.KeyIsPressed('S')) { snk2.JumpOn(); }                    // jump
+				if (wnd.kbd.KeyIsPressed('S')) 
+				{ 
+					// In local mode, apply jump directly
+					// In network mode, only set the flag - host will apply the jump
+					if (!networkingEnabled)
+					{
+						snk2.JumpOn();
+					}
+					pendingJump2 = true;  // flag for network sync (always set for network mode)
+				}
 			}
 		}
 
@@ -739,12 +748,20 @@ void Game::UpdateNetworking()
 	}
 	else
 	{
-		// CLIENT: Send snake 2 input to host whenever it changes
+		// CLIENT: Send snake 2 input to host whenever it changes or jump is pending
 		Location currentVel = snk2.GetSnakeVelocity();
-		if (currentVel.x != lastSentVelocity2.x || currentVel.y != lastSentVelocity2.y)
+		bool shouldSendInput = (currentVel.x != lastSentVelocity2.x || 
+		                        currentVel.y != lastSentVelocity2.y ||
+		                        pendingJump2);
+		
+		if (shouldSendInput)
 		{
-			networkMgr.SendInput(currentVel.x, currentVel.y, false, snk2MovePeriod);
+			// Send the base velocity (without jump multiplier) for direction
+			// The jump flag tells host to apply jump
+			Location baseVel = snk2.GetBaseVelocity();
+			networkMgr.SendInput(baseVel.x, baseVel.y, pendingJump2, snk2MovePeriod);
 			lastSentVelocity2 = currentVel;
+			pendingJump2 = false;  // Clear jump flag after sending
 		}
 		
 		// Also send periodically to keep connection alive (input also serves as heartbeat)
@@ -752,7 +769,8 @@ void Game::UpdateNetworking()
 		float inputHeartbeatElapsed = std::chrono::duration<float>(now - lastInputHeartbeat).count();
 		if (inputHeartbeatElapsed > 0.5f) // Send input heartbeat every 500ms
 		{
-			networkMgr.SendInput(currentVel.x, currentVel.y, false, snk2MovePeriod);
+			Location baseVel = snk2.GetBaseVelocity();
+			networkMgr.SendInput(baseVel.x, baseVel.y, false, snk2MovePeriod);
 			lastInputHeartbeat = now;
 		}
 	}
@@ -765,6 +783,12 @@ void Game::ApplyRemoteInput(const InputMessage& msg)
 	{
 		snk2.SetSnakeVelocity({ msg.vx, msg.vy });
 		snk2MovePeriod = msg.movePeriod;
+		
+		// Apply jump if client is jumping
+		if (msg.jump)
+		{
+			snk2.JumpOn();
+		}
 	}
 }
 
