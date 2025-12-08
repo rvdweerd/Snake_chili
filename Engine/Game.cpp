@@ -240,25 +240,35 @@ void Game::UpdateModel()
 		// Client only sends input and receives state updates
 		bool shouldProcessGameLogic = !networkingEnabled || isNetworkHost;
 
-		//Control direction of snake 1
-		if (wnd.kbd.KeyIsPressed(0x66))	{ snk1.SetSnakeVelocity( { 1, 0} );}	// move right (numpad 6)
-		if (wnd.kbd.KeyIsPressed(0x64))	{ snk1.SetSnakeVelocity( {-1, 0} );}	// move left (numpad 4)
-		if (wnd.kbd.KeyIsPressed(0x62))	{ snk1.SetSnakeVelocity( { 0, 1} );}	// move down (numpad 2)
-		if (wnd.kbd.KeyIsPressed(0x68))	{ snk1.SetSnakeVelocity( { 0,-1} );}	// move up (numpad 8)
-		//Adjust speed 
-		if (wnd.kbd.KeyIsPressed(0x61)) { snk1MovePeriod *= 1.05f; }			// slower (numpad 7)
-		if (wnd.kbd.KeyIsPressed(0x67)) { snk1MovePeriod /= 1.05f; }			// faster (numpad 1)
-		if (wnd.kbd.KeyIsPressed(0x69)) { snk1.SetSnakeVelocity( { 0,0 } );}	// stall (numpad 9)
-		//Jump
-		if (wnd.kbd.KeyIsPressed(0x65)) { snk1.JumpOn();}						// jump (numpad 5)
+		// ===== PLAYER 1 CONTROLS (HOST in network mode) =====
+		// In network mode: Only HOST controls snake 1
+		// In local mode: Local player controls snake 1
+		bool shouldControlSnake1 = !networkingEnabled || isNetworkHost;
 		
+		if (shouldControlSnake1)
+		{
+			//Control direction of snake 1
+			if (wnd.kbd.KeyIsPressed(0x66))	{ snk1.SetSnakeVelocity( { 1, 0} );}	// move right (numpad 6)
+			if (wnd.kbd.KeyIsPressed(0x64))	{ snk1.SetSnakeVelocity( {-1, 0} );}	// move left (numpad 4)
+			if (wnd.kbd.KeyIsPressed(0x62))	{ snk1.SetSnakeVelocity( { 0, 1} );}	// move down (numpad 2)
+			if (wnd.kbd.KeyIsPressed(0x68))	{ snk1.SetSnakeVelocity( { 0,-1} );}	// move up (numpad 8)
+			//Adjust speed 
+			if (wnd.kbd.KeyIsPressed(0x61)) { snk1MovePeriod *= 1.05f; }			// slower (numpad 7)
+			if (wnd.kbd.KeyIsPressed(0x67)) { snk1MovePeriod /= 1.05f; }			// faster (numpad 1)
+			if (wnd.kbd.KeyIsPressed(0x69)) { snk1.SetSnakeVelocity( { 0,0 } );}	// stall (numpad 9)
+			//Jump
+			if (wnd.kbd.KeyIsPressed(0x65)) { snk1.JumpOn();}						// jump (numpad 5)
+		}
+		
+		// ===== PLAYER 2 CONTROLS (CLIENT in network mode) =====
 		// Control second snake
 		if (gVar.numPlayers == 2)
 		{
-			// If networked, client controls snake 2 locally, host receives input
-			bool isLocalSnake2 = !networkingEnabled || !isNetworkHost;
+			// In network mode: CLIENT controls snake 2, HOST receives input from network
+			// In local mode: Local player 2 controls snake 2
+			bool shouldControlSnake2 = !networkingEnabled || !isNetworkHost;
 			
-			if (isLocalSnake2)
+			if (shouldControlSnake2)
 			{
 				if (wnd.kbd.KeyIsPressed('D')) { snk2.SetSnakeVelocity({ 1, 0 }); }  // move right
 				if (wnd.kbd.KeyIsPressed('A')) { snk2.SetSnakeVelocity({ -1, 0 }); } // move left
@@ -589,12 +599,21 @@ void Game::UpdateNetworking()
 	}
 	else
 	{
-		// Client sends input when it changes
+		// CLIENT: Send snake 2 input to host whenever it changes
 		Location currentVel = snk2.GetSnakeVelocity();
 		if (currentVel.x != lastSentVelocity2.x || currentVel.y != lastSentVelocity2.y)
 		{
 			networkMgr.SendInput(currentVel.x, currentVel.y, false, snk2MovePeriod);
 			lastSentVelocity2 = currentVel;
+		}
+		
+		// Also send periodically to keep connection alive (heartbeat)
+		static float heartbeatTimer = 0.0f;
+		heartbeatTimer += frmTime.Mark();
+		if (heartbeatTimer > 0.5f) // Send heartbeat every 500ms
+		{
+			networkMgr.SendInput(currentVel.x, currentVel.y, false, snk2MovePeriod);
+			heartbeatTimer = 0.0f;
 		}
 	}
 }
