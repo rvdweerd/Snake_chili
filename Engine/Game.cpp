@@ -655,26 +655,29 @@ void Game::UpdateNetworking()
 		return;
 	}
 
-	// Both host and client send heartbeats periodically to keep connection alive
-	static float heartbeatTimer = 0.0f;
-	heartbeatTimer += frmTime.Mark();
+	// Use a local static timer for heartbeat since frmTime.Mark() is already called in UpdateModel
+	static std::chrono::steady_clock::time_point lastHeartbeatTime = std::chrono::steady_clock::now();
+	static std::chrono::steady_clock::time_point lastSyncTime = std::chrono::steady_clock::now();
+	
+	auto now = std::chrono::steady_clock::now();
 	constexpr float heartbeatInterval = 2.0f; // Send heartbeat every 2 seconds
 	
-	if (heartbeatTimer >= heartbeatInterval)
+	float heartbeatElapsed = std::chrono::duration<float>(now - lastHeartbeatTime).count();
+	if (heartbeatElapsed >= heartbeatInterval)
 	{
 		networkMgr.SendHeartbeat();
-		heartbeatTimer = 0.0f;
+		lastHeartbeatTime = now;
 	}
 
 	if (isNetworkHost)
 	{
 		// Host sends full game state periodically
-		networkSyncCounter += frmTime.Mark();
-		if (networkSyncCounter >= networkSyncPeriod)
+		float syncElapsed = std::chrono::duration<float>(now - lastSyncTime).count();
+		if (syncElapsed >= networkSyncPeriod)
 		{
 			GameStateSnapshot state = CreateGameStateSnapshot();
 			networkMgr.SendGameState(state);
-			networkSyncCounter = 0.0f;
+			lastSyncTime = now;
 			
 			// DEBUG: Output every second
 			static int sendCount = 0;
@@ -695,12 +698,12 @@ void Game::UpdateNetworking()
 		}
 		
 		// Also send periodically to keep connection alive (input also serves as heartbeat)
-		static float inputHeartbeatTimer = 0.0f;
-		inputHeartbeatTimer += frmTime.Mark();
-		if (inputHeartbeatTimer > 0.5f) // Send input heartbeat every 500ms
+		static std::chrono::steady_clock::time_point lastInputHeartbeat = std::chrono::steady_clock::now();
+		float inputHeartbeatElapsed = std::chrono::duration<float>(now - lastInputHeartbeat).count();
+		if (inputHeartbeatElapsed > 0.5f) // Send input heartbeat every 500ms
 		{
 			networkMgr.SendInput(currentVel.x, currentVel.y, false, snk2MovePeriod);
-			inputHeartbeatTimer = 0.0f;
+			lastInputHeartbeat = now;
 		}
 	}
 }

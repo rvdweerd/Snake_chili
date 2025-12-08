@@ -9,8 +9,8 @@ struct NetworkManager::Impl
 	
 	sockaddr_in peerAddr{};
 	sockaddr_in pendingPeerAddr{};
-	bool hasPeer = false;
-	bool hasPendingPeer = false;
+	std::atomic<bool> hasPeer{false};
+	std::atomic<bool> hasPendingPeer{false};
 	
 	std::thread discoveryThread;
 	std::thread networkThread;
@@ -205,26 +205,59 @@ void NetworkManager::SendGameState(const GameStateSnapshot& state)
 	netState.magic = GAME_MAGIC;
 	netState.sequence = htonl(pImpl->sendSequence++);
 	
-	// CRITICAL FIX: Convert all multi-byte fields to network byte order
-	netState.snake1SegmentCount = htons(netState.snake1SegmentCount);
-	netState.snake2SegmentCount = htons(netState.snake2SegmentCount);
+	// Store original counts before converting (needed for loop limits)
+	uint16_t origSnake1Count = state.snake1SegmentCount;
+	uint16_t origSnake2Count = state.snake2SegmentCount;
+	uint16_t origFoodCount = state.foodCount;
+	uint16_t origPoisonCount = state.poisonCount;
+	uint16_t origBarrierCount = state.barrierCount;
+	
+	// Clamp counts to array bounds
+	if (origSnake1Count > 500) origSnake1Count = 500;
+	if (origSnake2Count > 500) origSnake2Count = 500;
+	if (origFoodCount > 100) origFoodCount = 100;
+	if (origPoisonCount > 100) origPoisonCount = 100;
+	if (origBarrierCount > 200) origBarrierCount = 200;
+	
+	// Convert all multi-byte fields to network byte order
+	netState.snake1SegmentCount = htons(origSnake1Count);
+	netState.snake2SegmentCount = htons(origSnake2Count);
 	netState.player1Score = htons(netState.player1Score);
 	netState.player2Score = htons(netState.player2Score);
-	netState.foodCount = htons(netState.foodCount);
-	netState.poisonCount = htons(netState.poisonCount);
-	netState.barrierCount = htons(netState.barrierCount);
+	netState.foodCount = htons(origFoodCount);
+	netState.poisonCount = htons(origPoisonCount);
+	netState.barrierCount = htons(origBarrierCount);
 	
 	// Convert all segment positions to network byte order
-	for (int i = 0; i < state.snake1SegmentCount && i < 500; i++)
+	for (int i = 0; i < origSnake1Count; i++)
 	{
 		netState.snake1Segments[i].x = htons(netState.snake1Segments[i].x);
 		netState.snake1Segments[i].y = htons(netState.snake1Segments[i].y);
 	}
 	
-	for (int i = 0; i < state.snake2SegmentCount && i < 500; i++)
+	for (int i = 0; i < origSnake2Count; i++)
 	{
 		netState.snake2Segments[i].x = htons(netState.snake2Segments[i].x);
 		netState.snake2Segments[i].y = htons(netState.snake2Segments[i].y);
+	}
+	
+	// Convert food/poison/barrier locations to network byte order
+	for (int i = 0; i < origFoodCount; i++)
+	{
+		netState.foodLocations[i].x = htons(netState.foodLocations[i].x);
+		netState.foodLocations[i].y = htons(netState.foodLocations[i].y);
+	}
+	
+	for (int i = 0; i < origPoisonCount; i++)
+	{
+		netState.poisonLocations[i].x = htons(netState.poisonLocations[i].x);
+		netState.poisonLocations[i].y = htons(netState.poisonLocations[i].y);
+	}
+	
+	for (int i = 0; i < origBarrierCount; i++)
+	{
+		netState.barrierLocations[i].x = htons(netState.barrierLocations[i].x);
+		netState.barrierLocations[i].y = htons(netState.barrierLocations[i].y);
 	}
 
 	sendto(pImpl->gameSock, (char*)&netState, sizeof(netState), 0,
@@ -569,6 +602,13 @@ void NetworkManager::NetworkThreadFunc()
 				state.poisonCount = ntohs(state.poisonCount);
 				state.barrierCount = ntohs(state.barrierCount);
 				
+				// BOUNDS VALIDATION: Clamp counts to prevent buffer overruns from malformed packets
+				if (state.snake1SegmentCount > 500) state.snake1SegmentCount = 500;
+				if (state.snake2SegmentCount > 500) state.snake2SegmentCount = 500;
+				if (state.foodCount > 100) state.foodCount = 100;
+				if (state.poisonCount > 100) state.poisonCount = 100;
+				if (state.barrierCount > 200) state.barrierCount = 200;
+				
 				// Convert all segment positions FROM network byte order
 				for (int i = 0; i < state.snake1SegmentCount && i < 500; i++)
 				{
@@ -580,6 +620,25 @@ void NetworkManager::NetworkThreadFunc()
 				{
 					state.snake2Segments[i].x = ntohs(state.snake2Segments[i].x);
 					state.snake2Segments[i].y = ntohs(state.snake2Segments[i].y);
+				}
+				
+				// Convert food/poison/barrier locations FROM network byte order
+				for (int i = 0; i < state.foodCount && i < 100; i++)
+				{
+					state.foodLocations[i].x = ntohs(state.foodLocations[i].x);
+					state.foodLocations[i].y = ntohs(state.foodLocations[i].y);
+				}
+				
+				for (int i = 0; i < state.poisonCount && i < 100; i++)
+				{
+					state.poisonLocations[i].x = ntohs(state.poisonLocations[i].x);
+					state.poisonLocations[i].y = ntohs(state.poisonLocations[i].y);
+				}
+				
+				for (int i = 0; i < state.barrierCount && i < 200; i++)
+				{
+					state.barrierLocations[i].x = ntohs(state.barrierLocations[i].x);
+					state.barrierLocations[i].y = ntohs(state.barrierLocations[i].y);
 				}
 				
 				// DEBUG: Log raw packet data AFTER conversion
