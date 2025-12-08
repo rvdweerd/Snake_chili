@@ -151,32 +151,21 @@ void Game::UpdateModel()
 			break;
 			
 		case NetworkState::PeerFound:
+			// User must accept or decline
+			if (wnd.kbd.KeyIsPressed('Y'))
 			{
-				// Draw modal dialog
-				gfx.DrawRect(150, 180, 650, 420, Color(50, 50, 50));
-				gfx.DrawRect(150, 180, 650, 185, Colors::Yellow);   // Top border
-				gfx.DrawRect(150, 415, 650, 420, Colors::Yellow);   // Bottom border
-				gfx.DrawRect(150, 180, 155, 420, Colors::Yellow);   // Left border
-				gfx.DrawRect(645, 180, 650, 420, Colors::Yellow);   // Right border
-				
-				// Title
-				SpriteCodex::DrawString("NETWORK PLAYER FOUND!", 220, 200, Colors::Yellow, gfx);
-				
-				// IP addresses with better formatting
-				std::string localIP = "YOUR IP:  " + networkMgr.GetLocalAddress();
-				std::string peerIP = "PEER IP:  " + networkMgr.GetPeerAddress();
-				SpriteCodex::DrawString(localIP, 200, 240, Colors::Cyan, gfx);
-				SpriteCodex::DrawString(peerIP, 200, 260, Colors::Green, gfx);
-				
-				// Role information
-				std::string role = (networkMgr.GetRole() == NetworkRole::Host) 
-				    ? "YOU WILL BE: HOST (PLAYER 1)" 
-				    : "YOU WILL BE: CLIENT (PLAYER 2)";
-				SpriteCodex::DrawString(role, 200, 300, Colors::White, gfx);
-				
-				// Action buttons
-				SpriteCodex::DrawString("PRESS Y TO ACCEPT", 250, 350, Colors::Green, gfx);
-				SpriteCodex::DrawString("PRESS O TO DECLINE", 245, 380, Colors::Red, gfx);
+				networkState = NetworkState::Connecting;
+				networkMgr.AcceptConnection();
+				networkPeerDetected = false;
+			}
+			else if (wnd.kbd.KeyIsPressed('O'))
+			{
+				// Decline and stop networking entirely
+				networkMgr.DeclineConnection();
+				networkMgr.Stop();
+				networkState = NetworkState::Disabled;
+				networkPeerDetected = false;
+				networkPromptShown = false;
 			}
 			break;
 			
