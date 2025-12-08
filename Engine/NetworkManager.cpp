@@ -24,6 +24,7 @@ struct NetworkManager::Impl
 	std::function<void()> onConnected;
 	std::function<void()> onPeerDetected;
 	std::function<void()> onDisconnected;
+	std::function<void()> onGameStartReceived;
 	
 	uint32_t sendSequence = 0;
 	uint32_t lastReceivedSequence = 0;
@@ -208,6 +209,21 @@ void NetworkManager::SendGameState(const GameStateSnapshot& state)
 		   (sockaddr*)&pImpl->peerAddr, sizeof(pImpl->peerAddr));
 }
 
+void NetworkManager::SendStartCommand()
+{
+	if (!pImpl->hasPeer || pImpl->gameSock == INVALID_SOCKET)
+	{
+		return;
+	}
+
+	StartCommand cmd{};
+	cmd.magic = GAME_MAGIC;
+	cmd.commandType = 0; // start game
+
+	sendto(pImpl->gameSock, (char*)&cmd, sizeof(cmd), 0,
+		   (sockaddr*)&pImpl->peerAddr, sizeof(pImpl->peerAddr));
+}
+
 void NetworkManager::SetOnInputReceived(std::function<void(const InputMessage&)> callback)
 {
 	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
@@ -218,6 +234,12 @@ void NetworkManager::SetOnGameStateReceived(std::function<void(const GameStateSn
 {
 	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
 	pImpl->onGameStateReceived = callback;
+}
+
+void NetworkManager::SetOnGameStartReceived(std::function<void()> callback)
+{
+	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+	pImpl->onGameStartReceived = callback;
 }
 
 void NetworkManager::SetOnConnected(std::function<void()> callback)
@@ -467,6 +489,16 @@ void NetworkManager::NetworkThreadFunc()
 				if (pImpl->onInputReceived)
 				{
 					pImpl->onInputReceived(msg);
+				}
+			}
+			else if (received == sizeof(StartCommand))
+			{
+				StartCommand cmd = *(StartCommand*)buffer;
+				
+				std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+				if (pImpl->onGameStartReceived)
+				{
+					pImpl->onGameStartReceived();
 				}
 			}
 			else if (received == sizeof(GameStateSnapshot))

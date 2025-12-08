@@ -54,11 +54,17 @@ public:
 	// Send full game state (host only)
 	void SendGameState(const GameStateSnapshot& state);
 
+	// Send start game command (host only)
+	void SendStartCommand();
+
 	// Set callback for received input (host uses this)
 	void SetOnInputReceived(std::function<void(const InputMessage&)> callback);
 
 	// Set callback for received game state (client uses this)
 	void SetOnGameStateReceived(std::function<void(const GameStateSnapshot&)> callback);
+
+	// Set callback for game start command (client uses this)
+	void SetOnGameStartReceived(std::function<void()> callback);
 
 	// Set callback for connection established
 	void SetOnConnected(std::function<void()> callback);
@@ -122,6 +128,13 @@ struct InputMessage
 	uint8_t jump;      // 0 or 1
 	uint8_t padding;
 	float movePeriod;
+};
+
+struct StartCommand
+{
+	uint32_t magic;
+	uint8_t commandType; // 0 = start game
+	char padding[3];
 };
 
 struct SnakeSegment

@@ -71,6 +71,15 @@ Game::Game(MainWindow& wnd)
 		}
 	});
 
+	networkMgr.SetOnGameStartReceived([this]() {
+		// Received game start command from host (client only)
+		if (!isNetworkHost)
+		{
+			isStarted = true;
+			gameOver = false;
+		}
+	});
+
 	networkMgr.SetOnDisconnected([this]() {
 		// Connection lost
 		networkingEnabled = false;
@@ -395,22 +404,32 @@ void Game::UpdateModel()
 	// Handle game (re)start
 	if (wnd.kbd.KeyIsPressed(VK_RETURN))
 	{
-		isStarted = true;
-		gameOver = false;
-		
-		// Reset speeds to initial values
-		// Only reset speed for players that crashed
-		if (crashedPlayer == 1 || crashedPlayer == 3)
+		// In network mode, only HOST can start the game
+		if (!networkingEnabled || isNetworkHost)
 		{
-			snk1MovePeriod = gVar.initialSpeed;
-			snk1.Reset();
+			isStarted = true;
+			gameOver = false;
+			
+			// If host in network mode, notify client to start too
+			if (networkingEnabled && isNetworkHost)
+			{
+				networkMgr.SendStartCommand();
+			}
+			
+			// Reset speeds to initial values
+			// Only reset speed for players that crashed
+			if (crashedPlayer == 1 || crashedPlayer == 3)
+			{
+				snk1MovePeriod = gVar.initialSpeed;
+				snk1.Reset();
+			}
+			if (crashedPlayer == 2 || crashedPlayer == 3)
+			{
+				snk2MovePeriod = gVar.initialSpeed;
+				snk2.Reset();
+			}
+			crashedPlayer = 0;
 		}
-		if (crashedPlayer == 2 || crashedPlayer == 3)
-		{
-			snk2MovePeriod = gVar.initialSpeed;
-			snk2.Reset();
-		}
-		crashedPlayer = 0;
 	}
 }
 
@@ -540,7 +559,16 @@ void Game::ComposeFrame()
 			
 		case NetworkState::Connected:
 			SpriteCodex::DrawString("CONNECTED!", 310, 230, Colors::Green, gfx);
-			SpriteCodex::DrawString("PRESS ENTER TO START", 260, 270, Colors::White, gfx);
+			
+			// Show different instructions for host vs client
+			if (isNetworkHost)
+			{
+				SpriteCodex::DrawString("PRESS ENTER TO START", 260, 270, Colors::White, gfx);
+			}
+			else
+			{
+				SpriteCodex::DrawString("WAITING FOR HOST TO START...", 220, 270, Colors::Yellow, gfx);
+			}
 			
 			// Show who you're playing with
 			{
