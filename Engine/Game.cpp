@@ -73,10 +73,18 @@ Game::Game(MainWindow& wnd)
 
 	networkMgr.SetOnGameStartReceived([this]() {
 		// Received game start command from host (client only)
+		OutputDebugStringA("onGameStartReceived: CLIENT received START command from host\n");
+		
 		if (!isNetworkHost)
 		{
 			isStarted = true;
 			gameOver = false;
+			
+			OutputDebugStringA("onGameStartReceived: Set isStarted=TRUE, gameOver=FALSE\n");
+		}
+		else
+		{
+			OutputDebugStringA("onGameStartReceived: WARNING - Called on HOST (should only be CLIENT)\n");
 		}
 	});
 
@@ -449,6 +457,18 @@ void Game::UpdateModel()
 
 void Game::ComposeFrame()
 {
+	// DEBUG: Log EVERY FRAME if client to verify isStarted flag
+	static int totalFrames = 0;
+	totalFrames++;
+	
+	if (networkingEnabled && !isNetworkHost && totalFrames % 300 == 0)
+	{
+		std::string statusMsg = "ComposeFrame: Frame #" + std::to_string(totalFrames) + 
+		                        ", isStarted=" + std::string(isStarted ? "TRUE" : "FALSE") + 
+		                        ", gameOver=" + std::string(gameOver ? "TRUE" : "FALSE") + "\n";
+		OutputDebugStringA(statusMsg.c_str());
+	}
+	
 	if (isStarted)
 	{
 		// DEBUG: Log occasionally to verify drawing
@@ -560,7 +580,7 @@ void Game::ComposeFrame()
 				gfx.DrawRect(150, 415, 650, 420, Colors::Yellow);   // Bottom border
 				gfx.DrawRect(150, 180, 155, 420, Colors::Yellow);   // Left border
 				gfx.DrawRect(645, 180, 650, 420, Colors::Yellow);   // Right border
-				
+								
 				// Title
 				SpriteCodex::DrawString("NETWORK PLAYER FOUND!", 220, 200, Colors::Yellow, gfx);
 				
