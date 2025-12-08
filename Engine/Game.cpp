@@ -163,9 +163,22 @@ void Game::UpdateModel()
 			// User must accept or decline
 			if (wnd.kbd.KeyIsPressed('Y'))
 			{
-				networkState = NetworkState::Connecting;
 				networkMgr.AcceptConnection();
+				// AcceptConnection calls onConnected callback synchronously,
+				// which sets networkingEnabled = true
 				networkPeerDetected = false;
+				
+				// Transition directly to Connected since callback is synchronous
+				if (networkingEnabled)
+				{
+					networkState = NetworkState::Connected;
+					lastPingTime = 0.0f;
+					missedPings = 0;
+				}
+				else
+				{
+					networkState = NetworkState::Connecting;
+				}
 			}
 			else if (wnd.kbd.KeyIsPressed('O'))
 			{
@@ -179,7 +192,8 @@ void Game::UpdateModel()
 			break;
 			
 		case NetworkState::Connecting:
-			// Wait for onConnected callback to change networkingEnabled
+			// The AcceptConnection call will trigger onConnected callback immediately
+			// which sets networkingEnabled = true. Check that here.
 			if (networkingEnabled)
 			{
 				networkState = NetworkState::Connected;

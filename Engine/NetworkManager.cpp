@@ -315,7 +315,6 @@ std::string NetworkManager::GetPeerAddress() const
 
 std::string NetworkManager::GetLocalAddress() const
 {
-	char localIp[INET_ADDRSTRLEN] = {};
 	char hostname[256];
 	
 	if (gethostname(hostname, sizeof(hostname)) == 0)
@@ -325,12 +324,16 @@ std::string NetworkManager::GetLocalAddress() const
 		{
 			struct in_addr addr;
 			memcpy(&addr, host->h_addr_list[0], sizeof(struct in_addr));
-			inet_ntop(AF_INET, &addr, localIp, sizeof(localIp));
-			return std::string(localIp);
+			char localIp[INET_ADDRSTRLEN];
+			if (inet_ntop(AF_INET, &addr, localIp, sizeof(localIp)) != nullptr)
+			{
+				return std::string(localIp);
+			}
 		}
 	}
 	
-	return "Unknown";
+	// Fallback: return localhost IP
+	return "127.0.0.1";
 }
 
 void NetworkManager::SendDiscoveryBroadcast()
