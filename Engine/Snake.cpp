@@ -191,7 +191,18 @@ void Snake::SetSegments(const Location* locations, int segmentCount)
 			OutputDebugStringA(debugMsg.c_str());
 		}
 		
+		int oldSize = static_cast<int>(segments.size());
 		segments.resize(segmentCount);
+		
+		// Initialize colors for any new segments
+		// Use a simple green gradient for new body segments
+		for (int i = oldSize; i < segmentCount; i++)
+		{
+			// Create gradient green color (darker towards tail)
+			int greenIntensity = 255 - (i * 150 / segmentCount);
+			if (greenIntensity < 100) greenIntensity = 100;
+			segments[i].color = Color(10, static_cast<unsigned char>(greenIntensity), 10);
+		}
 		
 		// Update all segment locations
 		for (int i = 0; i < segmentCount; i++)

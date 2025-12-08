@@ -102,3 +102,39 @@ void Board::SetCellContent(Location loc, contentType cellContent)
 {
 	masterArray[loc.y * width + loc.x] = cellContent;
 }
+
+int Board::GetAllContentLocations(contentType type, Location* outLocations, int maxCount) const
+{
+	int count = 0;
+	for (int i = 0; i < width * height && count < maxCount; i++)
+	{
+		if (masterArray[i] == type)
+		{
+			int x = i % width;
+			int y = i / width;
+			outLocations[count] = Location(x, y);
+			count++;
+		}
+	}
+	return count;
+}
+
+void Board::ClearAllContent()
+{
+	for (int i = 0; i < width * height; i++)
+	{
+		masterArray[i] = contentType::empty;
+	}
+}
+
+void Board::SetContentFromLocations(contentType type, const Location* locations, int count)
+{
+	for (int i = 0; i < count; i++)
+	{
+		int index = locations[i].y * width + locations[i].x;
+		if (index >= 0 && index < width * height)
+		{
+			masterArray[index] = type;
+		}
+	}
+}

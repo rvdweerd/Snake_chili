@@ -436,6 +436,10 @@ void Game::UpdateModel()
 			if (networkingEnabled && isNetworkHost)
 			{
 				networkMgr.SendStartCommand();
+				
+				// Send immediate game state so client has correct initial state
+				GameStateSnapshot state = CreateGameStateSnapshot();
+				networkMgr.SendGameState(state);
 			}
 			
 			// Reset speeds to initial values
@@ -733,7 +737,10 @@ void Game::ApplyGameStateSnapshot(const GameStateSnapshot& state)
 	{
 		std::string debugMsg = "ApplyGameStateSnapshot: Update #" + std::to_string(updateCount) + 
 		                       " - Snake1: " + std::to_string(state.snake1SegmentCount) + " segments, " +
-		                       "Snake2: " + std::to_string(state.snake2SegmentCount) + " segments\n";
+		                       "Snake2: " + std::to_string(state.snake2SegmentCount) + " segments, " +
+		                       "Food: " + std::to_string(state.foodCount) + ", " +
+		                       "Poison: " + std::to_string(state.poisonCount) + ", " +
+		                       "Barriers: " + std::to_string(state.barrierCount) + "\n";
 		OutputDebugStringA(debugMsg.c_str());
 		
 		// Log first segment position for snake 1
@@ -760,6 +767,42 @@ void Game::ApplyGameStateSnapshot(const GameStateSnapshot& state)
 	DeserializeSnake(snk2, state.snake2Segments, state.snake2SegmentCount,
 					 state.snake2VelocityX, state.snake2VelocityY);
 	snk2MovePeriod = state.snake2MovePeriod;
+	
+	// Apply board state - clear and rebuild from received data
+	brd.ClearAllContent();
+	
+	// Apply food locations
+	if (state.foodCount > 0)
+	{
+		Location foodLocs[100];
+		for (int i = 0; i < state.foodCount && i < 100; i++)
+		{
+			foodLocs[i] = Location(state.foodLocations[i].x, state.foodLocations[i].y);
+		}
+		brd.SetContentFromLocations(Board::contentType::food, foodLocs, state.foodCount);
+	}
+	
+	// Apply poison locations
+	if (state.poisonCount > 0)
+	{
+		Location poisonLocs[100];
+		for (int i = 0; i < state.poisonCount && i < 100; i++)
+		{
+			poisonLocs[i] = Location(state.poisonLocations[i].x, state.poisonLocations[i].y);
+		}
+		brd.SetContentFromLocations(Board::contentType::poison, poisonLocs, state.poisonCount);
+	}
+	
+	// Apply barrier locations
+	if (state.barrierCount > 0)
+	{
+		Location barrierLocs[200];
+		for (int i = 0; i < state.barrierCount && i < 200; i++)
+		{
+			barrierLocs[i] = Location(state.barrierLocations[i].x, state.barrierLocations[i].y);
+		}
+		brd.SetContentFromLocations(Board::contentType::barrier, barrierLocs, state.barrierCount);
+	}
 	
 	// Verify snakes were updated
 	if (updateCount % 20 == 0)
@@ -791,10 +834,36 @@ GameStateSnapshot Game::CreateGameStateSnapshot()
 	state.gameOver = gameOver ? 1 : 0;
 	state.crashedPlayer = crashedPlayer;
 
-	// Board state
-	state.foodCount = 0;
-	state.poisonCount = 0;
-	state.barrierCount = 0;
+	// Board state - extract all content locations
+	// Food locations
+	Location foodLocs[100];
+	int foodCount = brd.GetAllContentLocations(Board::contentType::food, foodLocs, 100);
+	state.foodCount = static_cast<uint16_t>(foodCount);
+	for (int i = 0; i < foodCount; i++)
+	{
+		state.foodLocations[i].x = static_cast<int16_t>(foodLocs[i].x);
+		state.foodLocations[i].y = static_cast<int16_t>(foodLocs[i].y);
+	}
+	
+	// Poison locations
+	Location poisonLocs[100];
+	int poisonCount = brd.GetAllContentLocations(Board::contentType::poison, poisonLocs, 100);
+	state.poisonCount = static_cast<uint16_t>(poisonCount);
+	for (int i = 0; i < poisonCount; i++)
+	{
+		state.poisonLocations[i].x = static_cast<int16_t>(poisonLocs[i].x);
+		state.poisonLocations[i].y = static_cast<int16_t>(poisonLocs[i].y);
+	}
+	
+	// Barrier locations
+	Location barrierLocs[200];
+	int barrierCount = brd.GetAllContentLocations(Board::contentType::barrier, barrierLocs, 200);
+	state.barrierCount = static_cast<uint16_t>(barrierCount);
+	for (int i = 0; i < barrierCount; i++)
+	{
+		state.barrierLocations[i].x = static_cast<int16_t>(barrierLocs[i].x);
+		state.barrierLocations[i].y = static_cast<int16_t>(barrierLocs[i].y);
+	}
 
 	// DEBUG: Log what we're about to send
 	static int createCount = 0;
@@ -802,6 +871,9 @@ GameStateSnapshot Game::CreateGameStateSnapshot()
 	{
 		std::string debugMsg = "CreateGameStateSnapshot: snake1SegmentCount=" + std::to_string(state.snake1SegmentCount) +
 		                       ", snake2SegmentCount=" + std::to_string(state.snake2SegmentCount) +
+		                       ", food=" + std::to_string(state.foodCount) +
+		                       ", poison=" + std::to_string(state.poisonCount) +
+		                       ", barriers=" + std::to_string(state.barrierCount) +
 		                       ", gameOver=" + std::to_string(state.gameOver) + "\n";
 		OutputDebugStringA(debugMsg.c_str());
 	}

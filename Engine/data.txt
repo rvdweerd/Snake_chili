@@ -8,7 +8,7 @@ x  y
 [Poison Amount]
 0
 [Food Amount]
-50
+0
 [Initial Speed]
 .5f
 [Initial Snakelength]

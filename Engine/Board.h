@@ -32,6 +32,11 @@ public:
 	void Spawn(contentType cellType, std::mt19937& rng, int n);
 	contentType GetCellContent(Location loc);
 	void SetCellContent(Location loc, contentType cellContent);
+	
+	// Network serialization methods
+	int GetAllContentLocations(contentType type, Location* outLocations, int maxCount) const;
+	void ClearAllContent();
+	void SetContentFromLocations(contentType type, const Location* locations, int count);
 
 private:
 	int dimension;
