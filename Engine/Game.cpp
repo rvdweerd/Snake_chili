@@ -95,46 +95,133 @@ void Game::UpdateModel()
 {
 	float dt = frmTime.Mark();
 	
-	// Allow user to manually start networking by pressing 'N' key (only when game not started)
-	if (!isStarted && !networkingEnabled && wnd.kbd.KeyIsPressed('N'))
+	// ===== NETWORKING STATE MACHINE =====
+	if (!isStarted)  // Only handle networking on title screen
 	{
-		// Try to start network discovery
-		bool networkStarted = networkMgr.StartDiscovery();
-		if (!networkStarted)
+		switch (networkState)
 		{
-			// Failed to start networking - continue in local mode
-			// Could add visual feedback here in the future
+		case NetworkState::Disabled:
+			// Allow user to start networking
+			if (wnd.kbd.KeyIsPressed('N'))
+			{
+				networkState = NetworkState::Starting;
+				networkSearchTimer = 0.0f;
+				networkError.clear();
+				
+				bool success = networkMgr.StartDiscovery();
+				if (success)
+				{
+					networkState = NetworkState::Searching;
+				}
+				else
+				{
+					networkState = NetworkState::Failed;
+					networkError = "Failed to start network";
+				}
+			}
+			break;
+			
+		case NetworkState::Searching:
+			// Increment search timer
+			networkSearchTimer += dt;
+			
+			// Allow cancel with ESC key
+			if (wnd.kbd.KeyIsPressed(VK_ESCAPE))
+			{
+				networkMgr.Stop();
+				networkState = NetworkState::Disabled;
+				networkPeerDetected = false;
+				networkPromptShown = false;
+			}
+			
+			// Check for timeout
+			if (networkSearchTimer > networkSearchTimeout)
+			{
+				networkMgr.Stop();
+				networkState = NetworkState::Failed;
+				networkError = "Timeout: No players found";
+			}
+			
+			// Check if peer detected
+			if (networkPeerDetected && !networkPromptShown)
+			{
+				networkState = NetworkState::PeerFound;
+				networkPromptShown = true;
+			}
+			break;
+			
+		case NetworkState::PeerFound:
+			// User must accept or decline
+			if (wnd.kbd.KeyIsPressed('Y'))
+			{
+				networkState = NetworkState::Connecting;
+				networkMgr.AcceptConnection();
+				networkPeerDetected = false;
+			}
+			else if (wnd.kbd.KeyIsPressed('O'))
+			{
+				// Decline and stop networking entirely
+				networkMgr.DeclineConnection();
+				networkMgr.Stop();
+				networkState = NetworkState::Disabled;
+				networkPeerDetected = false;
+				networkPromptShown = false;
+			}
+			break;
+			
+		case NetworkState::Connecting:
+			// Wait for onConnected callback to change networkingEnabled
+			if (networkingEnabled)
+			{
+				networkState = NetworkState::Connected;
+				lastPingTime = 0.0f;
+				missedPings = 0;
+			}
+			break;
+			
+		case NetworkState::Connected:
+			// Ready to play! Waiting for user to press ENTER
+			break;
+			
+		case NetworkState::Failed:
+			// Show error, allow return with ENTER
+			if (wnd.kbd.KeyIsPressed(VK_RETURN))
+			{
+				networkState = NetworkState::Disabled;
+				networkError.clear();
+			}
+			break;
+		}
+	}
+	else  // Game is running
+	{
+		// Monitor connection health during gameplay
+		if (networkState == NetworkState::Connected && networkingEnabled)
+		{
+			lastPingTime += dt;
+			if (lastPingTime > pingInterval)
+			{
+				// Check if we've been receiving data
+				// This is a simple check - could be enhanced with actual ping messages
+				lastPingTime = 0.0f;
+			}
+		}
+		
+		// Handle disconnection during game
+		if (networkState == NetworkState::Connected && !networkingEnabled)
+		{
+			// Connection was lost
+			networkState = NetworkState::Failed;
+			networkError = "Connection lost";
+			gameOver = true;
 		}
 	}
 	
-	// Handle network peer detection prompt (before game starts)
-	if (networkPeerDetected && !networkPromptShown && !isStarted)
+	// Update networking (only if connected)
+	if (networkState == NetworkState::Connected && networkingEnabled)
 	{
-		networkPromptShown = true;
-		// Prompt is displayed in ComposeFrame
-		// User presses Y to accept, O to decline
+		UpdateNetworking();
 	}
-
-	if (networkPeerDetected && networkPromptShown && !isStarted)
-	{
-		// Check for user input
-		if (wnd.kbd.KeyIsPressed('Y'))
-		{
-			// User accepts multiplayer
-			networkMgr.AcceptConnection();
-			networkPeerDetected = false;
-		}
-		else if (wnd.kbd.KeyIsPressed('O'))
-		{
-			// User declines multiplayer
-			networkPeerDetected = false;
-			networkPromptShown = false;
-			// Continue in single player mode
-		}
-	}
-	
-	// Update networking
-	UpdateNetworking();
 
 	if (isStarted)
 	{
@@ -336,71 +423,102 @@ void Game::ComposeFrame()
 		{
 			SpriteCodex::DrawNumber(player2Score, 10, 10, gfx);
 		}
+		
+		// Show connection status if networked
+		if (networkingEnabled && networkState == NetworkState::Connected)
+		{
+			std::string statusText = isNetworkHost ? "HOST" : "CLIENT";
+			SpriteCodex::DrawString(statusText, gfx.ScreenWidth - 100, gfx.ScreenHeight - 20, Colors::Cyan, gfx);
+		}
 	}
-	else
+	else  // Title screen
 	{
 		SpriteCodex::DrawTitle(100, 100, gfx);
 		
-		// Draw control instructions with readable text
-		SpriteCodex::DrawString("PRESS ENTER TO START", 280, 250, Colors::White, gfx);
-		
-		// Player controls
-		if (gVar.numPlayers == 1)
+		// ===== NETWORK STATE UI =====
+		switch (networkState)
 		{
-			SpriteCodex::DrawString("PLAYER 1 CONTROLS:", 50, 300, Colors::Magenta, gfx);
-			SpriteCodex::DrawString("NUMPAD 8246 - MOVE", 50, 315, Colors::White, gfx);
-			SpriteCodex::DrawString("NUMPAD 5 - JUMP", 50, 330, Colors::White, gfx);
-		}
-		else if (gVar.numPlayers == 2)
-		{
-			SpriteCodex::DrawString("PLAYER 1:", 50, 300, Colors::Magenta, gfx);
-			SpriteCodex::DrawString("NUMPAD 8246 - MOVE", 50, 315, Colors::White, gfx);
-			SpriteCodex::DrawString("NUMPAD 5 - JUMP", 50, 330, Colors::White, gfx);
+		case NetworkState::Disabled:
+			SpriteCodex::DrawString("PRESS ENTER TO START", 280, 250, Colors::White, gfx);
 			
-			SpriteCodex::DrawString("PLAYER 2:", 450, 300, Colors::Green, gfx);
-			SpriteCodex::DrawString("WASD - MOVE", 450, 315, Colors::White, gfx);
-			SpriteCodex::DrawString("S - JUMP", 450, 330, Colors::White, gfx);
-		}
-		
-		// Networking instructions
-		if (!networkingEnabled)
-		{
+			// Show player controls based on data.txt setting
+			if (gVar.numPlayers == 1)
+			{
+				SpriteCodex::DrawString("PLAYER 1 CONTROLS:", 50, 300, Colors::Magenta, gfx);
+				SpriteCodex::DrawString("NUMPAD 8246 - MOVE", 50, 315, Colors::White, gfx);
+				SpriteCodex::DrawString("NUMPAD 5 - JUMP", 50, 330, Colors::White, gfx);
+			}
+			else if (gVar.numPlayers == 2)
+			{
+				SpriteCodex::DrawString("PLAYER 1:", 50, 300, Colors::Magenta, gfx);
+				SpriteCodex::DrawString("NUMPAD 8246 - MOVE", 50, 315, Colors::White, gfx);
+				SpriteCodex::DrawString("NUMPAD 5 - JUMP", 50, 330, Colors::White, gfx);
+				
+				SpriteCodex::DrawString("PLAYER 2:", 450, 300, Colors::Green, gfx);
+				SpriteCodex::DrawString("WASD - MOVE", 450, 315, Colors::White, gfx);
+				SpriteCodex::DrawString("S - JUMP", 450, 330, Colors::White, gfx);
+			}
+			
 			SpriteCodex::DrawString("PRESS N FOR NETWORK MODE", 240, 380, Colors::Cyan, gfx);
-		}
-		else
-		{
-			SpriteCodex::DrawString("SEARCHING FOR PLAYERS...", 250, 380, Colors::Green, gfx);
-		}
-		
-		// Display network peer detection prompt
-		if (networkPeerDetected && networkPromptShown)
-		{
-			// Draw overlay
-			gfx.DrawRect(150, 200, 650, 400, Color(50, 50, 50));
+			break;
 			
-			// Draw border
-			gfx.DrawRect(150, 200, 650, 205, Colors::Yellow);  // Top
-			gfx.DrawRect(150, 395, 650, 400, Colors::Yellow);  // Bottom
-			gfx.DrawRect(150, 200, 155, 400, Colors::Yellow);  // Left
-			gfx.DrawRect(645, 200, 650, 400, Colors::Yellow);  // Right
+		case NetworkState::Searching:
+			{
+				// Show search progress with countdown
+				int remainingTime = static_cast<int>(networkSearchTimeout - networkSearchTimer);
+				std::string searchText = "SEARCHING FOR PLAYERS... " + 
+				                        std::to_string(remainingTime) + "s";
+				SpriteCodex::DrawString(searchText, 220, 250, Colors::Green, gfx);
+				
+				// Animated dots
+				int dots = (static_cast<int>(networkSearchTimer * 2) % 4);
+				std::string dotStr(dots, '.');
+				SpriteCodex::DrawString(dotStr, 540, 250, Colors::Green, gfx);
+				
+				// Show local IP
+				std::string localIP = "YOUR IP: " + networkMgr.GetLocalAddress();
+				SpriteCodex::DrawString(localIP, 260, 290, Colors::Cyan, gfx);
+				
+				// Cancel instructions
+				SpriteCodex::DrawString("PRESS ESC TO CANCEL", 260, 380, Colors::Gray, gfx);
+			}
+			break;
 			
-			// Draw text
-			SpriteCodex::DrawString("NETWORK PLAYER FOUND", 230, 220, Colors::Yellow, gfx);
+		case NetworkState::PeerFound:
+			// User must accept or decline
+			if (!networkPromptShown)
+			{
+				SpriteCodex::DrawString("PEER FOUND! PRESS Y TO CONNECT", 180, 250, Colors::Yellow, gfx);
+				SpriteCodex::DrawString("PRESS O TO DECLINE", 240, 290, Colors::Yellow, gfx);
+				
+				networkPromptShown = true;
+			}
+			break;
 			
-			// Display IP addresses
-			std::string localIP = "YOUR IP: " + networkMgr.GetLocalAddress();
-			std::string peerIP = "PEER IP: " + networkMgr.GetPeerAddress();
-			SpriteCodex::DrawString(localIP, 200, 250, Colors::Cyan, gfx);
-			SpriteCodex::DrawString(peerIP, 200, 270, Colors::Green, gfx);
+		case NetworkState::Connecting:
+			SpriteCodex::DrawString("CONNECTING...", 260, 250, Colors::Yellow, gfx);
+			break;
 			
-			SpriteCodex::DrawString("PRESS Y TO ACCEPT", 250, 310, Colors::Green, gfx);
-			SpriteCodex::DrawString("PRESS O TO DECLINE", 245, 350, Colors::Red, gfx);
+		case NetworkState::Connected:
+			// Nothing extra to show on UI for now
+			break;
+			
+		case NetworkState::Failed:
+			SpriteCodex::DrawString("NETWORK ERROR:", 240, 250, Colors::Red, gfx);
+			SpriteCodex::DrawString(networkError, 240, 290, Colors::Red, gfx);
+			break;
 		}
 	}
-	
+
 	if (gameOver)
 	{
 		SpriteCodex::DrawGameOver(200, 200, gfx);
+		
+		// Show disconnect message if connection was lost
+		if (networkState == NetworkState::Failed && !networkError.empty())
+		{
+			SpriteCodex::DrawString(networkError, 240, 350, Colors::Red, gfx);
+		}
 	}
 }
 

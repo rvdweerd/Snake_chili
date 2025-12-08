@@ -253,6 +253,19 @@ void NetworkManager::AcceptConnection()
 	}
 }
 
+void NetworkManager::DeclineConnection()
+{
+	if (pImpl->hasPendingPeer)
+	{
+		// Clear pending peer and return to discovering state
+		pImpl->hasPendingPeer = false;
+		pImpl->connectionState = ConnectionState::Discovering;
+		
+		// Send optional rejection message to peer (future enhancement)
+		// This allows the peer to know the connection was declined
+	}
+}
+
 void NetworkManager::SetOnDisconnected(std::function<void()> callback)
 {
 	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
@@ -261,14 +274,21 @@ void NetworkManager::SetOnDisconnected(std::function<void()> callback)
 
 std::string NetworkManager::GetPeerAddress() const
 {
-	if (!pImpl->hasPeer)
+	// Check both active and pending peer
+	if (pImpl->hasPeer)
 	{
-		return "No peer";
+		char buffer[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &pImpl->peerAddr.sin_addr, buffer, sizeof(buffer));
+		return std::string(buffer);
+	}
+	else if (pImpl->hasPendingPeer)
+	{
+		char buffer[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &pImpl->pendingPeerAddr.sin_addr, buffer, sizeof(buffer));
+		return std::string(buffer);
 	}
 	
-	char buffer[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET, &pImpl->peerAddr.sin_addr, buffer, sizeof(buffer));
-	return std::string(buffer);
+	return "Unknown";
 }
 
 std::string NetworkManager::GetLocalAddress() const
@@ -403,6 +423,8 @@ void NetworkManager::DiscoveryThreadFunc()
 void NetworkManager::NetworkThreadFunc()
 {
 	char buffer[65536];
+	std::chrono::steady_clock::time_point lastAliveCheck = std::chrono::steady_clock::now();
+	const int connectionTimeoutSeconds = 5;
 	
 	while (pImpl->running)
 	{
@@ -420,6 +442,7 @@ void NetworkManager::NetworkThreadFunc()
 		if (received > 0)
 		{
 			pImpl->lastReceiveTime = std::chrono::steady_clock::now();
+			lastAliveCheck = pImpl->lastReceiveTime;
 
 			// Check magic number
 			uint32_t* magic = (uint32_t*)buffer;
@@ -453,18 +476,27 @@ void NetworkManager::NetworkThreadFunc()
 			}
 		}
 
-		// Check for timeout (5 seconds without receiving data)
+		// Check for timeout with proper interval
 		auto now = std::chrono::steady_clock::now();
-		if (std::chrono::duration_cast<std::chrono::seconds>(now - pImpl->lastReceiveTime).count() > 5)
+		auto timeSinceLastReceive = std::chrono::duration_cast<std::chrono::seconds>(now - lastAliveCheck).count();
+		
+		if (timeSinceLastReceive > connectionTimeoutSeconds)
 		{
-			pImpl->hasPeer = false;
-			pImpl->connectionState = ConnectionState::Disconnected;
-			
-			std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
-			if (pImpl->onDisconnected)
+			// Connection timeout detected
+			if (pImpl->hasPeer)
 			{
-				pImpl->onDisconnected();
+				pImpl->hasPeer = false;
+				pImpl->connectionState = ConnectionState::Disconnected;
+				
+				std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+				if (pImpl->onDisconnected)
+				{
+					pImpl->onDisconnected();
+				}
 			}
+			
+			// Reset timer to avoid repeated callbacks
+			lastAliveCheck = now;
 		}
 
 		std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60Hz

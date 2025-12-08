@@ -69,6 +69,9 @@ public:
 	// Accept pending connection (call after user confirms)
 	void AcceptConnection();
 
+	// Decline pending connection (call when user rejects)
+	void DeclineConnection();
+
 	// Set callback for connection lost
 	void SetOnDisconnected(std::function<void()> callback);
 

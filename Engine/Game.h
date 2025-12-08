@@ -30,6 +30,17 @@
 #include "GameVariables.h"
 #include "NetworkManager.h"
 
+enum class NetworkState
+{
+	Disabled,      // Not using network
+	Starting,      // User pressed N, initializing
+	Searching,     // Broadcasting and listening
+	PeerFound,     // Peer detected, waiting for user decision
+	Connecting,    // User accepted, establishing connection
+	Connected,     // Active network game
+	Failed         // Network start failed
+};
+
 class Game
 {
 public:
@@ -85,11 +96,21 @@ private:
 	Location lastSentVelocity1 = {0, 0};
 	Location lastSentVelocity2 = {0, 0};
 	
-	// Network prompt state
+	// Network state management
+	NetworkState networkState = NetworkState::Disabled;
 	bool networkPeerDetected = false;
 	bool networkPromptShown = false;
 	bool userWantsNetworking = false;
 	int originalNumPlayers = 1; // Store original setting from data.txt
+	float networkSearchTimeout = 30.0f;  // 30 seconds to find peer
+	float networkSearchTimer = 0.0f;
+	std::string networkError;
+	
+	// Connection quality tracking
+	float lastPingTime = 0.0f;
+	float pingInterval = 1.0f;
+	int missedPings = 0;
+	static constexpr int maxMissedPings = 3;
 	/********************************/
 	//std::random_device rd;
 	//std::mt19937 rng;

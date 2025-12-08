@@ -14,4 +14,4 @@ x  y
 [Initial Snakelength]
 5
 [Num Players]
-1
+2
