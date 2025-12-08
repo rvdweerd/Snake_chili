@@ -56,7 +56,11 @@ private:
 	void UpdateNetworking();
 	void ApplyRemoteInput(const InputMessage& msg);
 	void ApplyGameStateSnapshot(const GameStateSnapshot& state);
+	void ApplyBoardDelta(const BoardDelta& delta);
 	GameStateSnapshot CreateGameStateSnapshot();
+	SnakeStateUpdate CreateSnakeStateUpdate();
+	void SendPendingBoardDeltas();
+	void SpawnWithTracking(Board::contentType type, int count);
 	void SerializeSnake(const Snake& snake, SnakeSegment* segments, uint16_t& count, int8_t& vx, int8_t& vy);
 	void DeserializeSnake(Snake& snake, const SnakeSegment* segments, uint16_t count, int8_t vx, int8_t vy);
 	/********************************/
@@ -95,6 +99,7 @@ private:
 	static constexpr float networkSyncPeriod = 0.05f; // 20Hz sync rate
 	Location lastSentVelocity1 = {0, 0};
 	Location lastSentVelocity2 = {0, 0};
+	bool initialSyncSent = false;  // Track if we've sent initial full state
 	
 	// Network state management
 	NetworkState networkState = NetworkState::Disabled;

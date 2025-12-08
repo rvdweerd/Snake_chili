@@ -6,6 +6,13 @@
 #include "GameVariables.h"
 #include <vector>
 
+// Structure to track a single board change
+struct BoardChangeRecord
+{
+	uint8_t changeType;  // Maps to BoardChangeType values (0-5)
+	Location loc;
+};
+
 class Board
 {
 public:
@@ -37,8 +44,21 @@ public:
 	int GetAllContentLocations(contentType type, Location* outLocations, int maxCount) const;
 	void ClearAllContent();
 	void SetContentFromLocations(contentType type, const Location* locations, int count);
+	
+	// Delta tracking methods for network sync
+	void EnableChangeTracking(bool enable);
+	bool HasPendingChanges() const;
+	int GetPendingChanges(BoardChangeRecord* outChanges, int maxCount);
+	void ClearPendingChanges();
+	void ApplyChange(uint8_t changeType, const Location& loc);
+	
+	// Tracked content modification (records changes for delta sync)
+	void AddContent(contentType type, const Location& loc);
+	void RemoveContent(const Location& loc);
 
 private:
+	void RecordChange(uint8_t changeType, const Location& loc);
+	
 	int dimension;
 	const Location startPos = { 10,10 };
 	static constexpr int cellPadding = 1;
@@ -52,4 +72,8 @@ private:
 	//contentType* masterArray = nullptr;
 	std::vector<contentType> masterArray;
 	
+	// Change tracking for delta sync
+	bool trackChanges = false;
+	std::vector<BoardChangeRecord> pendingChanges;
+	static constexpr int maxPendingChanges = 100;
 };

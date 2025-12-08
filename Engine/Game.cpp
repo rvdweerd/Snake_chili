@@ -70,6 +70,14 @@ Game::Game(MainWindow& wnd)
 			ApplyGameStateSnapshot(state);
 		}
 	});
+	
+	networkMgr.SetOnBoardDeltaReceived([this](const BoardDelta& delta) {
+		// Received board delta update (client only)
+		if (!isNetworkHost)
+		{
+			ApplyBoardDelta(delta);
+		}
+	});
 
 	networkMgr.SetOnGameStartReceived([this]() {
 		// Received game start command from host (client only)
@@ -319,15 +327,17 @@ void Game::UpdateModel()
 				if (brd.GetCellContent(new_loc1) == Board::contentType::food)
 				{
 					snk1.Grow(rng);
-					brd.Spawn(Board::contentType::food, rng, 1);
-					brd.Spawn(Board::contentType::barrier, rng, 1);
-					brd.SetCellContent(new_loc1, Board::contentType::empty);
+					// Use tracked methods for network sync
+					brd.RemoveContent(new_loc1);
+					// Spawn new food and barrier with tracking
+					SpawnWithTracking(Board::contentType::food, 1);
+					SpawnWithTracking(Board::contentType::barrier, 1);
 					player1Score++;
 				}
 
 				if (brd.GetCellContent(new_loc1) == Board::contentType::poison)
 				{
-					brd.SetCellContent(new_loc1, Board::contentType::empty);
+					brd.RemoveContent(new_loc1);
 					snk1MovePeriod /= gVar.speedupRate;
 				}
 
@@ -371,15 +381,17 @@ void Game::UpdateModel()
 				if (brd.GetCellContent(new_loc2) == Board::contentType::food)
 				{
 					snk2.Grow(rng);
-					brd.Spawn(Board::contentType::food, rng, 1);
-					brd.Spawn(Board::contentType::barrier, rng, 1);
-					brd.SetCellContent(new_loc2, Board::contentType::empty);
+					// Use tracked methods for network sync
+					brd.RemoveContent(new_loc2);
+					// Spawn new food and barrier with tracking
+					SpawnWithTracking(Board::contentType::food, 1);
+					SpawnWithTracking(Board::contentType::barrier, 1);
 					player2Score++;
 				}
 
 				if (brd.GetCellContent(new_loc2) == Board::contentType::poison)
 				{
-					brd.SetCellContent(new_loc2, Board::contentType::empty);
+					brd.RemoveContent(new_loc2);
 					snk2MovePeriod /= gVar.speedupRate;
 				}
 
@@ -432,14 +444,21 @@ void Game::UpdateModel()
 			isStarted = true;
 			gameOver = false;
 			
-			// If host in network mode, notify client to start too
+			// If host in network mode, enable change tracking and send initial state
 			if (networkingEnabled && isNetworkHost)
 			{
+				// Enable board change tracking for delta sync
+				brd.EnableChangeTracking(true);
+				
 				networkMgr.SendStartCommand();
 				
-				// Send immediate game state so client has correct initial state
+				// Send full game state so client has correct initial state
 				GameStateSnapshot state = CreateGameStateSnapshot();
 				networkMgr.SendGameState(state);
+				
+				initialSyncSent = true;
+				
+				OutputDebugStringA("HOST: Game started, sent initial full state, change tracking enabled\n");
 			}
 			
 			// Reset speeds to initial values
@@ -675,19 +694,46 @@ void Game::UpdateNetworking()
 
 	if (isNetworkHost)
 	{
-		// Host sends full game state periodically
+		// Send any pending board deltas immediately
+		SendPendingBoardDeltas();
+		
+		// Host sends snake state updates periodically (lightweight, no board data)
 		float syncElapsed = std::chrono::duration<float>(now - lastSyncTime).count();
 		if (syncElapsed >= networkSyncPeriod)
 		{
-			GameStateSnapshot state = CreateGameStateSnapshot();
+			SnakeStateUpdate update = CreateSnakeStateUpdate();
+			
+			// Send as lightweight update (SnakeStateUpdate message)
+			// For now, we'll use the full GameStateSnapshot but with 0 board counts
+			// to signal snake-only update
+			GameStateSnapshot state{};
+			state.snake1SegmentCount = update.snake1SegmentCount;
+			memcpy(state.snake1Segments, update.snake1Segments, sizeof(SnakeSegment) * update.snake1SegmentCount);
+			state.snake1VelocityX = update.snake1VelocityX;
+			state.snake1VelocityY = update.snake1VelocityY;
+			state.snake1MovePeriod = update.snake1MovePeriod;
+			state.snake2SegmentCount = update.snake2SegmentCount;
+			memcpy(state.snake2Segments, update.snake2Segments, sizeof(SnakeSegment) * update.snake2SegmentCount);
+			state.snake2VelocityX = update.snake2VelocityX;
+			state.snake2VelocityY = update.snake2VelocityY;
+			state.snake2MovePeriod = update.snake2MovePeriod;
+			state.player1Score = update.player1Score;
+			state.player2Score = update.player2Score;
+			state.gameOver = update.gameOver;
+			state.crashedPlayer = update.crashedPlayer;
+			// Set board counts to 0 to indicate snake-only update
+			state.foodCount = 0;
+			state.poisonCount = 0;
+			state.barrierCount = 0;
+			
 			networkMgr.SendGameState(state);
 			lastSyncTime = now;
 			
 			// DEBUG: Output every second
 			static int sendCount = 0;
-			if (++sendCount % 20 == 0) // Every 20 sends (~1 second at 20Hz)
+			if (++sendCount % 20 == 0)
 			{
-				OutputDebugStringA("HOST: Sending game state update\n");
+				OutputDebugStringA("HOST: Sending snake state update (delta mode)\n");
 			}
 		}
 	}
@@ -728,6 +774,9 @@ void Game::ApplyGameStateSnapshot(const GameStateSnapshot& state)
 	static int updateCount = 0;
 	updateCount++;
 	
+	// Check if this is a full state update or snake-only update
+	bool isFullStateUpdate = (state.foodCount > 0 || state.poisonCount > 0 || state.barrierCount > 0);
+	
 	if (updateCount == 1)
 	{
 		OutputDebugStringA("ApplyGameStateSnapshot: FIRST CALL - callback is working!\n");
@@ -736,20 +785,10 @@ void Game::ApplyGameStateSnapshot(const GameStateSnapshot& state)
 	if (updateCount % 20 == 0) // Every 20 updates (~1 second at 20Hz)
 	{
 		std::string debugMsg = "ApplyGameStateSnapshot: Update #" + std::to_string(updateCount) + 
+		                       (isFullStateUpdate ? " [FULL]" : " [SNAKE-ONLY]") +
 		                       " - Snake1: " + std::to_string(state.snake1SegmentCount) + " segments, " +
-		                       "Snake2: " + std::to_string(state.snake2SegmentCount) + " segments, " +
-		                       "Food: " + std::to_string(state.foodCount) + ", " +
-		                       "Poison: " + std::to_string(state.poisonCount) + ", " +
-		                       "Barriers: " + std::to_string(state.barrierCount) + "\n";
+		                       "Snake2: " + std::to_string(state.snake2SegmentCount) + " segments\n";
 		OutputDebugStringA(debugMsg.c_str());
-		
-		// Log first segment position for snake 1
-		if (state.snake1SegmentCount > 0)
-		{
-			std::string posMsg = "  Snake1 head at: (" + std::to_string(state.snake1Segments[0].x) + ", " + 
-			                     std::to_string(state.snake1Segments[0].y) + ")\n";
-			OutputDebugStringA(posMsg.c_str());
-		}
 	}
 
 	// Client applies received game state
@@ -768,40 +807,52 @@ void Game::ApplyGameStateSnapshot(const GameStateSnapshot& state)
 					 state.snake2VelocityX, state.snake2VelocityY);
 	snk2MovePeriod = state.snake2MovePeriod;
 	
-	// Apply board state - clear and rebuild from received data
-	brd.ClearAllContent();
-	
-	// Apply food locations
-	if (state.foodCount > 0)
+	// Only apply board state if this is a full state update (not snake-only)
+	if (isFullStateUpdate)
 	{
-		Location foodLocs[100];
-		for (int i = 0; i < state.foodCount && i < 100; i++)
+		// Apply board state - clear and rebuild from received data
+		brd.ClearAllContent();
+		
+		// Apply food locations
+		if (state.foodCount > 0)
 		{
-			foodLocs[i] = Location(state.foodLocations[i].x, state.foodLocations[i].y);
+			Location foodLocs[100];
+			for (int i = 0; i < state.foodCount && i < 100; i++)
+			{
+				foodLocs[i] = Location(state.foodLocations[i].x, state.foodLocations[i].y);
+			}
+			brd.SetContentFromLocations(Board::contentType::food, foodLocs, state.foodCount);
 		}
-		brd.SetContentFromLocations(Board::contentType::food, foodLocs, state.foodCount);
-	}
-	
-	// Apply poison locations
-	if (state.poisonCount > 0)
-	{
-		Location poisonLocs[100];
-		for (int i = 0; i < state.poisonCount && i < 100; i++)
+		
+		// Apply poison locations
+		if (state.poisonCount > 0)
 		{
-			poisonLocs[i] = Location(state.poisonLocations[i].x, state.poisonLocations[i].y);
+			Location poisonLocs[100];
+			for (int i = 0; i < state.poisonCount && i < 100; i++)
+			{
+				poisonLocs[i] = Location(state.poisonLocations[i].x, state.poisonLocations[i].y);
+			}
+			brd.SetContentFromLocations(Board::contentType::poison, poisonLocs, state.poisonCount);
 		}
-		brd.SetContentFromLocations(Board::contentType::poison, poisonLocs, state.poisonCount);
-	}
-	
-	// Apply barrier locations
-	if (state.barrierCount > 0)
-	{
-		Location barrierLocs[200];
-		for (int i = 0; i < state.barrierCount && i < 200; i++)
+		
+		// Apply barrier locations
+		if (state.barrierCount > 0)
 		{
-			barrierLocs[i] = Location(state.barrierLocations[i].x, state.barrierLocations[i].y);
+			Location barrierLocs[200];
+			for (int i = 0; i < state.barrierCount && i < 200; i++)
+			{
+				barrierLocs[i] = Location(state.barrierLocations[i].x, state.barrierLocations[i].y);
+			}
+			brd.SetContentFromLocations(Board::contentType::barrier, barrierLocs, state.barrierCount);
 		}
-		brd.SetContentFromLocations(Board::contentType::barrier, barrierLocs, state.barrierCount);
+		
+		if (updateCount % 20 == 0)
+		{
+			std::string boardMsg = "  Board updated: Food=" + std::to_string(state.foodCount) + 
+			                       ", Poison=" + std::to_string(state.poisonCount) + 
+			                       ", Barriers=" + std::to_string(state.barrierCount) + "\n";
+			OutputDebugStringA(boardMsg.c_str());
+		}
 	}
 	
 	// Verify snakes were updated
@@ -810,6 +861,114 @@ void Game::ApplyGameStateSnapshot(const GameStateSnapshot& state)
 		std::string verifyMsg = "  After deserialize: Snake1 has " + std::to_string(snk1.GetSegmentCount()) + 
 		                        " segments, Snake2 has " + std::to_string(snk2.GetSegmentCount()) + " segments\n";
 		OutputDebugStringA(verifyMsg.c_str());
+	}
+}
+
+void Game::ApplyBoardDelta(const BoardDelta& delta)
+{
+	static int deltaCount = 0;
+	deltaCount++;
+	
+	if (deltaCount % 10 == 0)
+	{
+		std::string debugMsg = "ApplyBoardDelta: Delta #" + std::to_string(deltaCount) + 
+		                       " with " + std::to_string(delta.changeCount) + " changes\n";
+		OutputDebugStringA(debugMsg.c_str());
+	}
+	
+	// Apply each change in the delta
+	for (int i = 0; i < delta.changeCount && i < 20; i++)
+	{
+		Location loc(delta.changes[i].x, delta.changes[i].y);
+		brd.ApplyChange(delta.changes[i].changeType, loc);
+	}
+}
+
+SnakeStateUpdate Game::CreateSnakeStateUpdate()
+{
+	SnakeStateUpdate update{};
+	update.magic = 0; // Set by NetworkManager
+	update.sequence = 0; // Set by NetworkManager
+
+	// Serialize snakes
+	SerializeSnake(snk1, update.snake1Segments, update.snake1SegmentCount, 
+				   update.snake1VelocityX, update.snake1VelocityY);
+	update.snake1MovePeriod = snk1MovePeriod;
+
+	SerializeSnake(snk2, update.snake2Segments, update.snake2SegmentCount,
+				   update.snake2VelocityX, update.snake2VelocityY);
+	update.snake2MovePeriod = snk2MovePeriod;
+
+	// Game state
+	update.player1Score = player1Score;
+	update.player2Score = player2Score;
+	update.gameOver = gameOver ? 1 : 0;
+	update.crashedPlayer = crashedPlayer;
+
+	return update;
+}
+
+void Game::SendPendingBoardDeltas()
+{
+	if (!brd.HasPendingChanges())
+	{
+		return;
+	}
+	
+	BoardChangeRecord changes[20];
+	int changeCount = brd.GetPendingChanges(changes, 20);
+	
+	if (changeCount > 0)
+	{
+		BoardDelta delta{};
+		delta.changeCount = static_cast<uint8_t>(changeCount);
+		
+		for (int i = 0; i < changeCount; i++)
+		{
+			delta.changes[i].changeType = changes[i].changeType;
+			delta.changes[i].x = static_cast<int16_t>(changes[i].loc.x);
+			delta.changes[i].y = static_cast<int16_t>(changes[i].loc.y);
+		}
+		
+		networkMgr.SendBoardDelta(delta);
+		brd.ClearPendingChanges();
+		
+		static int sendDeltaCount = 0;
+		if (++sendDeltaCount % 10 == 0)
+		{
+			std::string debugMsg = "SendPendingBoardDeltas: Sent delta with " + 
+			                       std::to_string(changeCount) + " changes\n";
+			OutputDebugStringA(debugMsg.c_str());
+		}
+	}
+}
+
+void Game::SpawnWithTracking(Board::contentType type, int count)
+{
+	// This is similar to Board::Spawn but records changes for delta sync
+	std::uniform_int_distribution<int> xDist(0, brd.GetWidth() - 1);
+	std::uniform_int_distribution<int> yDist(0, brd.GetHeight() - 1);
+	
+	for (int n = 0; n < count; n++)
+	{
+		Location loc;
+		int attempts = 0;
+		const int maxAttempts = 1000;
+		
+		do
+		{
+			loc.x = xDist(rng);
+			loc.y = yDist(rng);
+			attempts++;
+		} while ((brd.GetCellContent(loc) != Board::contentType::empty ||
+		          snk1.IsInTile(loc) || snk2.IsInTile(loc)) && 
+		         attempts < maxAttempts);
+		
+		if (attempts < maxAttempts)
+		{
+			// Use AddContent which tracks changes
+			brd.AddContent(type, loc);
+		}
 	}
 }
 

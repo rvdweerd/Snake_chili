@@ -21,6 +21,7 @@ struct NetworkManager::Impl
 	std::mutex callbackMutex;
 	std::function<void(const InputMessage&)> onInputReceived;
 	std::function<void(const GameStateSnapshot&)> onGameStateReceived;
+	std::function<void(const BoardDelta&)> onBoardDeltaReceived;
 	std::function<void()> onConnected;
 	std::function<void()> onPeerDetected;
 	std::function<void()> onDisconnected;
@@ -295,6 +296,32 @@ void NetworkManager::SendHeartbeat()
 		   (sockaddr*)&pImpl->peerAddr, sizeof(pImpl->peerAddr));
 }
 
+void NetworkManager::SendBoardDelta(const BoardDelta& delta)
+{
+	if (!pImpl->hasPeer || pImpl->gameSock == INVALID_SOCKET)
+	{
+		return;
+	}
+
+	BoardDelta netDelta = delta;
+	netDelta.magic = GAME_MAGIC;
+	netDelta.sequence = htonl(pImpl->sendSequence++);
+	
+	// Convert change locations to network byte order
+	uint8_t count = delta.changeCount;
+	if (count > 20) count = 20;
+	
+	for (int i = 0; i < count; i++)
+	{
+		netDelta.changes[i].x = htons(netDelta.changes[i].x);
+		netDelta.changes[i].y = htons(netDelta.changes[i].y);
+		// changeType is uint8_t, no conversion needed
+	}
+
+	sendto(pImpl->gameSock, (char*)&netDelta, sizeof(netDelta), 0,
+		   (sockaddr*)&pImpl->peerAddr, sizeof(pImpl->peerAddr));
+}
+
 void NetworkManager::SetOnInputReceived(std::function<void(const InputMessage&)> callback)
 {
 	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
@@ -305,6 +332,12 @@ void NetworkManager::SetOnGameStateReceived(std::function<void(const GameStateSn
 {
 	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
 	pImpl->onGameStateReceived = callback;
+}
+
+void NetworkManager::SetOnBoardDeltaReceived(std::function<void(const BoardDelta&)> callback)
+{
+	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+	pImpl->onBoardDeltaReceived = callback;
 }
 
 void NetworkManager::SetOnGameStartReceived(std::function<void()> callback)
@@ -583,6 +616,105 @@ void NetworkManager::NetworkThreadFunc()
 				if (++heartbeatCount % 10 == 0)
 				{
 					OutputDebugStringA("NetworkThreadFunc: Heartbeat received\n");
+				}
+			}
+			else if (received == sizeof(BoardDelta))
+			{
+				// Board delta received - incremental board update
+				static int deltaCount = 0;
+				deltaCount++;
+				
+				BoardDelta delta = *(BoardDelta*)buffer;
+				delta.sequence = ntohl(delta.sequence);
+				
+				// Validate change count
+				if (delta.changeCount > 20) delta.changeCount = 20;
+				
+				// Convert change locations FROM network byte order
+				for (int i = 0; i < delta.changeCount; i++)
+				{
+					delta.changes[i].x = ntohs(delta.changes[i].x);
+					delta.changes[i].y = ntohs(delta.changes[i].y);
+				}
+				
+				if (deltaCount % 20 == 0)
+				{
+					std::string debugMsg = "NetworkThreadFunc: Received BoardDelta #" + std::to_string(deltaCount) + 
+					                       " with " + std::to_string(delta.changeCount) + " changes\n";
+					OutputDebugStringA(debugMsg.c_str());
+				}
+				
+				std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+				if (pImpl->onBoardDeltaReceived)
+				{
+					pImpl->onBoardDeltaReceived(delta);
+				}
+			}
+			else if (received == sizeof(SnakeStateUpdate))
+			{
+				// Lightweight snake-only update (no board data)
+				static int snakeUpdateCount = 0;
+				snakeUpdateCount++;
+				
+				SnakeStateUpdate update = *(SnakeStateUpdate*)buffer;
+				update.sequence = ntohl(update.sequence);
+				
+				// Convert counts
+				update.snake1SegmentCount = ntohs(update.snake1SegmentCount);
+				update.snake2SegmentCount = ntohs(update.snake2SegmentCount);
+				update.player1Score = ntohs(update.player1Score);
+				update.player2Score = ntohs(update.player2Score);
+				
+				// Bounds validation
+				if (update.snake1SegmentCount > 500) update.snake1SegmentCount = 500;
+				if (update.snake2SegmentCount > 500) update.snake2SegmentCount = 500;
+				
+				// Convert segment positions
+				for (int i = 0; i < update.snake1SegmentCount; i++)
+				{
+					update.snake1Segments[i].x = ntohs(update.snake1Segments[i].x);
+					update.snake1Segments[i].y = ntohs(update.snake1Segments[i].y);
+				}
+				
+				for (int i = 0; i < update.snake2SegmentCount; i++)
+				{
+					update.snake2Segments[i].x = ntohs(update.snake2Segments[i].x);
+					update.snake2Segments[i].y = ntohs(update.snake2Segments[i].y);
+				}
+				
+				// Create a GameStateSnapshot from the update (without board data)
+				// The callback will handle applying just the snake state
+				GameStateSnapshot state{};
+				state.sequence = update.sequence;
+				state.snake1SegmentCount = update.snake1SegmentCount;
+				memcpy(state.snake1Segments, update.snake1Segments, sizeof(SnakeSegment) * update.snake1SegmentCount);
+				state.snake1VelocityX = update.snake1VelocityX;
+				state.snake1VelocityY = update.snake1VelocityY;
+				state.snake1MovePeriod = update.snake1MovePeriod;
+				state.snake2SegmentCount = update.snake2SegmentCount;
+				memcpy(state.snake2Segments, update.snake2Segments, sizeof(SnakeSegment) * update.snake2SegmentCount);
+				state.snake2VelocityX = update.snake2VelocityX;
+				state.snake2VelocityY = update.snake2VelocityY;
+				state.snake2MovePeriod = update.snake2MovePeriod;
+				state.player1Score = update.player1Score;
+				state.player2Score = update.player2Score;
+				state.gameOver = update.gameOver;
+				state.crashedPlayer = update.crashedPlayer;
+				// Board counts are 0 - this signals to not update board
+				state.foodCount = 0;
+				state.poisonCount = 0;
+				state.barrierCount = 0;
+				
+				if (snakeUpdateCount % 60 == 0)
+				{
+					std::string debugMsg = "NetworkThreadFunc: Received SnakeStateUpdate #" + std::to_string(snakeUpdateCount) + "\n";
+					OutputDebugStringA(debugMsg.c_str());
+				}
+				
+				std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
+				if (pImpl->onGameStateReceived)
+				{
+					pImpl->onGameStateReceived(state);
 				}
 			}
 			else if (received == sizeof(GameStateSnapshot))

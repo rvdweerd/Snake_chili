@@ -14,6 +14,7 @@
 // Forward declarations
 struct GameStateSnapshot;
 struct InputMessage;
+struct BoardDelta;
 
 enum class NetworkRole
 {
@@ -51,8 +52,11 @@ public:
 	// Send local player input to peer
 	void SendInput(int8_t vx, int8_t vy, bool jump, float movePeriod);
 
-	// Send full game state (host only)
+	// Send full game state (host only) - used for initial sync
 	void SendGameState(const GameStateSnapshot& state);
+	
+	// Send board delta (host only) - used for incremental updates
+	void SendBoardDelta(const BoardDelta& delta);
 
 	// Send start game command (host only)
 	void SendStartCommand();
@@ -65,6 +69,9 @@ public:
 
 	// Set callback for received game state (client uses this)
 	void SetOnGameStateReceived(std::function<void(const GameStateSnapshot&)> callback);
+	
+	// Set callback for received board delta (client uses this)
+	void SetOnBoardDeltaReceived(std::function<void(const BoardDelta&)> callback);
 
 	// Set callback for game start command (client uses this)
 	void SetOnGameStartReceived(std::function<void()> callback);
@@ -150,6 +157,62 @@ struct SnakeSegment
 {
 	int16_t x;
 	int16_t y;
+};
+
+// Board delta change types
+enum class BoardChangeType : uint8_t
+{
+	FoodAdded = 0,
+	FoodRemoved = 1,
+	PoisonAdded = 2,
+	PoisonRemoved = 3,
+	BarrierAdded = 4,
+	BarrierRemoved = 5
+};
+
+// Single board change entry
+struct BoardChange
+{
+	uint8_t changeType;  // BoardChangeType
+	int16_t x;
+	int16_t y;
+};
+
+// Board delta message - contains multiple changes
+struct BoardDelta
+{
+	uint32_t magic;
+	uint32_t sequence;
+	uint8_t changeCount;      // Number of changes in this delta (max 20)
+	uint8_t padding[3];
+	BoardChange changes[20];  // Up to 20 changes per message
+};
+
+// Lightweight snake-only state for frequent updates (no board data)
+struct SnakeStateUpdate
+{
+	uint32_t magic;
+	uint32_t sequence;
+	
+	// Snake 1 data
+	uint16_t snake1SegmentCount;
+	SnakeSegment snake1Segments[500];
+	int8_t snake1VelocityX;
+	int8_t snake1VelocityY;
+	float snake1MovePeriod;
+	
+	// Snake 2 data
+	uint16_t snake2SegmentCount;
+	SnakeSegment snake2Segments[500];
+	int8_t snake2VelocityX;
+	int8_t snake2VelocityY;
+	float snake2MovePeriod;
+	
+	// Game state
+	uint16_t player1Score;
+	uint16_t player2Score;
+	uint8_t gameOver;
+	uint8_t crashedPlayer;
 };
 
 struct GameStateSnapshot

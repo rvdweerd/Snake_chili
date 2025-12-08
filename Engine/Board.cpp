@@ -3,6 +3,16 @@
 #include "Location.h"
 #include "Snake.h"
 
+// Board change type values (must match BoardChangeType enum in NetworkManager.h)
+namespace BoardChangeTypes {
+	constexpr uint8_t FoodAdded = 0;
+	constexpr uint8_t FoodRemoved = 1;
+	constexpr uint8_t PoisonAdded = 2;
+	constexpr uint8_t PoisonRemoved = 3;
+	constexpr uint8_t BarrierAdded = 4;
+	constexpr uint8_t BarrierRemoved = 5;
+}
+
 
 Board::Board(Graphics & gfx_in, Snake& snk1_in, Snake& snk2_in, GameVariables& gVar)
 	:
@@ -136,5 +146,141 @@ void Board::SetContentFromLocations(contentType type, const Location* locations,
 		{
 			masterArray[index] = type;
 		}
+	}
+}
+
+void Board::EnableChangeTracking(bool enable)
+{
+	trackChanges = enable;
+	if (!enable)
+	{
+		pendingChanges.clear();
+	}
+}
+
+bool Board::HasPendingChanges() const
+{
+	return !pendingChanges.empty();
+}
+
+int Board::GetPendingChanges(BoardChangeRecord* outChanges, int maxCount)
+{
+	int count = 0;
+	for (size_t i = 0; i < pendingChanges.size() && count < maxCount; i++)
+	{
+		outChanges[count] = pendingChanges[i];
+		count++;
+	}
+	return count;
+}
+
+void Board::ClearPendingChanges()
+{
+	pendingChanges.clear();
+}
+
+void Board::RecordChange(uint8_t changeType, const Location& loc)
+{
+	if (trackChanges && pendingChanges.size() < maxPendingChanges)
+	{
+		BoardChangeRecord record;
+		record.changeType = changeType;
+		record.loc = loc;
+		pendingChanges.push_back(record);
+	}
+}
+
+void Board::AddContent(contentType type, const Location& loc)
+{
+	int index = loc.y * width + loc.x;
+	if (index >= 0 && index < width * height)
+	{
+		masterArray[index] = type;
+		
+		// Record the change for delta sync
+		if (trackChanges)
+		{
+			uint8_t changeType = 0;
+			switch (type)
+			{
+			case contentType::food:
+				changeType = BoardChangeTypes::FoodAdded;
+				break;
+			case contentType::poison:
+				changeType = BoardChangeTypes::PoisonAdded;
+				break;
+			case contentType::barrier:
+				changeType = BoardChangeTypes::BarrierAdded;
+				break;
+			default:
+				return; // Don't record empty
+			}
+			RecordChange(changeType, loc);
+		}
+	}
+}
+
+void Board::RemoveContent(const Location& loc)
+{
+	int index = loc.y * width + loc.x;
+	if (index >= 0 && index < width * height)
+	{
+		contentType oldType = masterArray[index];
+		masterArray[index] = contentType::empty;
+		
+		// Record the change for delta sync
+		if (trackChanges && oldType != contentType::empty)
+		{
+			uint8_t changeType = 0;
+			switch (oldType)
+			{
+			case contentType::food:
+				changeType = BoardChangeTypes::FoodRemoved;
+				break;
+			case contentType::poison:
+				changeType = BoardChangeTypes::PoisonRemoved;
+				break;
+			case contentType::barrier:
+				changeType = BoardChangeTypes::BarrierRemoved;
+				break;
+			default:
+				return;
+			}
+			RecordChange(changeType, loc);
+		}
+	}
+}
+
+void Board::ApplyChange(uint8_t changeType, const Location& loc)
+{
+	int index = loc.y * width + loc.x;
+	if (index < 0 || index >= width * height)
+	{
+		return;
+	}
+	
+	switch (changeType)
+	{
+	case BoardChangeTypes::FoodAdded:
+		masterArray[index] = contentType::food;
+		break;
+	case BoardChangeTypes::FoodRemoved:
+		if (masterArray[index] == contentType::food)
+			masterArray[index] = contentType::empty;
+		break;
+	case BoardChangeTypes::PoisonAdded:
+		masterArray[index] = contentType::poison;
+		break;
+	case BoardChangeTypes::PoisonRemoved:
+		if (masterArray[index] == contentType::poison)
+			masterArray[index] = contentType::empty;
+		break;
+	case BoardChangeTypes::BarrierAdded:
+		masterArray[index] = contentType::barrier;
+		break;
+	case BoardChangeTypes::BarrierRemoved:
+		if (masterArray[index] == contentType::barrier)
+			masterArray[index] = contentType::empty;
+		break;
 	}
 }
