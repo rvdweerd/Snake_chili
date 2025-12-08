@@ -255,12 +255,7 @@ void Game::UpdateModel()
 			gameOver = true;
 		}
 	}
-	
-	// Update networking (only if connected)
-	if (networkState == NetworkState::Connected && networkingEnabled)
-	{
-		UpdateNetworking();
-	}
+
 
 	if (isStarted)
 	{
@@ -316,6 +311,12 @@ void Game::UpdateModel()
 					pendingJump2 = true;  // flag for network sync (always set for network mode)
 				}
 			}
+		}
+
+		// Update networking AFTER controls are processed so jump flags are set
+		if (networkState == NetworkState::Connected && networkingEnabled)
+		{
+			UpdateNetworking();
 		}
 
 		// Game simulation (only run on host in network mode)
