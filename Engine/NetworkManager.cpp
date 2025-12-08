@@ -334,9 +334,7 @@ void NetworkManager::HandleDiscoveryResponse(sockaddr_in& from)
 		return;
 	}
 
-	// First peer to connect becomes the "host" (decides who is player 1/2)
-	// We'll use a simple rule: lower IP address is host
-	
+	// Get local and remote IPs for comparison
 	char localIp[INET_ADDRSTRLEN] = {};
 	char remoteIp[INET_ADDRSTRLEN] = {};
 	
@@ -355,7 +353,15 @@ void NetworkManager::HandleDiscoveryResponse(sockaddr_in& from)
 	
 	inet_ntop(AF_INET, &from.sin_addr, remoteIp, sizeof(remoteIp));
 	
+	// CRITICAL FIX: Ignore discovery messages from ourselves!
+	if (strcmp(localIp, remoteIp) == 0)
+	{
+		// This is our own broadcast, ignore it
+		return;
+	}
+	
 	// Determine role based on IP comparison
+	// Lower IP address becomes host
 	if (strcmp(localIp, remoteIp) < 0)
 	{
 		pImpl->role = NetworkRole::Host;

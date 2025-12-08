@@ -151,36 +151,58 @@ void Game::UpdateModel()
 			break;
 			
 		case NetworkState::PeerFound:
-			// User must accept or decline
-			if (wnd.kbd.KeyIsPressed('Y'))
 			{
-				networkState = NetworkState::Connecting;
-				networkMgr.AcceptConnection();
-				networkPeerDetected = false;
-			}
-			else if (wnd.kbd.KeyIsPressed('O'))
-			{
-				// Decline and stop networking entirely
-				networkMgr.DeclineConnection();
-				networkMgr.Stop();
-				networkState = NetworkState::Disabled;
-				networkPeerDetected = false;
-				networkPromptShown = false;
+				// Draw modal dialog
+				gfx.DrawRect(150, 180, 650, 420, Color(50, 50, 50));
+				gfx.DrawRect(150, 180, 650, 185, Colors::Yellow);   // Top border
+				gfx.DrawRect(150, 415, 650, 420, Colors::Yellow);   // Bottom border
+				gfx.DrawRect(150, 180, 155, 420, Colors::Yellow);   // Left border
+				gfx.DrawRect(645, 180, 650, 420, Colors::Yellow);   // Right border
+				
+				// Title
+				SpriteCodex::DrawString("NETWORK PLAYER FOUND!", 220, 200, Colors::Yellow, gfx);
+				
+				// IP addresses with better formatting
+				std::string localIP = "YOUR IP:  " + networkMgr.GetLocalAddress();
+				std::string peerIP = "PEER IP:  " + networkMgr.GetPeerAddress();
+				SpriteCodex::DrawString(localIP, 200, 240, Colors::Cyan, gfx);
+				SpriteCodex::DrawString(peerIP, 200, 260, Colors::Green, gfx);
+				
+				// Role information
+				std::string role = (networkMgr.GetRole() == NetworkRole::Host) 
+				    ? "YOU WILL BE: HOST (PLAYER 1)" 
+				    : "YOU WILL BE: CLIENT (PLAYER 2)";
+				SpriteCodex::DrawString(role, 200, 300, Colors::White, gfx);
+				
+				// Action buttons
+				SpriteCodex::DrawString("PRESS Y TO ACCEPT", 250, 350, Colors::Green, gfx);
+				SpriteCodex::DrawString("PRESS O TO DECLINE", 245, 380, Colors::Red, gfx);
 			}
 			break;
 			
 		case NetworkState::Connecting:
-			// Wait for onConnected callback to change networkingEnabled
-			if (networkingEnabled)
+			SpriteCodex::DrawString("CONNECTING...", 260, 250, Colors::Yellow, gfx);
+			
+			// Animated dots
 			{
-				networkState = NetworkState::Connected;
-				lastPingTime = 0.0f;
-				missedPings = 0;
+				int dots = (static_cast<int>(networkSearchTimer * 3) % 4);
+				std::string dotStr(dots, '.');
+				SpriteCodex::DrawString(dotStr, 410, 250, Colors::Yellow, gfx);
 			}
 			break;
 			
 		case NetworkState::Connected:
-			// Ready to play! Waiting for user to press ENTER
+			SpriteCodex::DrawString("CONNECTED!", 310, 230, Colors::Green, gfx);
+			SpriteCodex::DrawString("PRESS ENTER TO START", 260, 270, Colors::White, gfx);
+			
+			// Show who you're playing with
+			{
+				std::string opponent = "OPPONENT: " + networkMgr.GetPeerAddress();
+				SpriteCodex::DrawString(opponent, 250, 310, Colors::Cyan, gfx);
+				
+				std::string yourRole = (isNetworkHost) ? "YOU ARE: PLAYER 1" : "YOU ARE: PLAYER 2";
+				SpriteCodex::DrawString(yourRole, 270, 340, Colors::Magenta, gfx);
+			}
 			break;
 			
 		case NetworkState::Failed:
@@ -485,22 +507,58 @@ void Game::ComposeFrame()
 			break;
 			
 		case NetworkState::PeerFound:
-			// User must accept or decline
-			if (!networkPromptShown)
 			{
-				SpriteCodex::DrawString("PEER FOUND! PRESS Y TO CONNECT", 180, 250, Colors::Yellow, gfx);
-				SpriteCodex::DrawString("PRESS O TO DECLINE", 240, 290, Colors::Yellow, gfx);
+				// Draw modal dialog
+				gfx.DrawRect(150, 180, 650, 420, Color(50, 50, 50));
+				gfx.DrawRect(150, 180, 650, 185, Colors::Yellow);   // Top border
+				gfx.DrawRect(150, 415, 650, 420, Colors::Yellow);   // Bottom border
+				gfx.DrawRect(150, 180, 155, 420, Colors::Yellow);   // Left border
+				gfx.DrawRect(645, 180, 650, 420, Colors::Yellow);   // Right border
 				
-				networkPromptShown = true;
+				// Title
+				SpriteCodex::DrawString("NETWORK PLAYER FOUND!", 220, 200, Colors::Yellow, gfx);
+				
+				// IP addresses with better formatting
+				std::string localIP = "YOUR IP:  " + networkMgr.GetLocalAddress();
+				std::string peerIP = "PEER IP:  " + networkMgr.GetPeerAddress();
+				SpriteCodex::DrawString(localIP, 200, 240, Colors::Cyan, gfx);
+				SpriteCodex::DrawString(peerIP, 200, 260, Colors::Green, gfx);
+				
+				// Role information
+				std::string role = (networkMgr.GetRole() == NetworkRole::Host) 
+				    ? "YOU WILL BE: HOST (PLAYER 1)" 
+				    : "YOU WILL BE: CLIENT (PLAYER 2)";
+				SpriteCodex::DrawString(role, 200, 300, Colors::White, gfx);
+				
+				// Action buttons
+				SpriteCodex::DrawString("PRESS Y TO ACCEPT", 250, 350, Colors::Green, gfx);
+				SpriteCodex::DrawString("PRESS O TO DECLINE", 245, 380, Colors::Red, gfx);
 			}
 			break;
 			
 		case NetworkState::Connecting:
 			SpriteCodex::DrawString("CONNECTING...", 260, 250, Colors::Yellow, gfx);
+			
+			// Animated dots
+			{
+				int dots = (static_cast<int>(networkSearchTimer * 3) % 4);
+				std::string dotStr(dots, '.');
+				SpriteCodex::DrawString(dotStr, 410, 250, Colors::Yellow, gfx);
+			}
 			break;
 			
 		case NetworkState::Connected:
-			// Nothing extra to show on UI for now
+			SpriteCodex::DrawString("CONNECTED!", 310, 230, Colors::Green, gfx);
+			SpriteCodex::DrawString("PRESS ENTER TO START", 260, 270, Colors::White, gfx);
+			
+			// Show who you're playing with
+			{
+				std::string opponent = "OPPONENT: " + networkMgr.GetPeerAddress();
+				SpriteCodex::DrawString(opponent, 250, 310, Colors::Cyan, gfx);
+				
+				std::string yourRole = (isNetworkHost) ? "YOU ARE: PLAYER 1" : "YOU ARE: PLAYER 2";
+				SpriteCodex::DrawString(yourRole, 270, 340, Colors::Magenta, gfx);
+			}
 			break;
 			
 		case NetworkState::Failed:
