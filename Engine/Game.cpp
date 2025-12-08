@@ -749,18 +749,21 @@ void Game::UpdateNetworking()
 	else
 	{
 		// CLIENT: Send snake 2 input to host whenever it changes or jump is pending
-		Location currentVel = snk2.GetSnakeVelocity();
-		bool shouldSendInput = (currentVel.x != lastSentVelocity2.x || 
-		                        currentVel.y != lastSentVelocity2.y ||
-		                        pendingJump2);
+		Location baseVel = snk2.GetBaseVelocity();
+		bool velocityChanged = (baseVel.x != lastSentVelocity2.x || 
+		                        baseVel.y != lastSentVelocity2.y);
+		bool shouldSendInput = velocityChanged || pendingJump2;
 		
 		if (shouldSendInput)
 		{
-			// Send the base velocity (without jump multiplier) for direction
-			// The jump flag tells host to apply jump
-			Location baseVel = snk2.GetBaseVelocity();
+			// DEBUG: Log when sending jump
+			if (pendingJump2)
+			{
+				OutputDebugStringA("CLIENT: Sending jump=TRUE to host\n");
+			}
+			
 			networkMgr.SendInput(baseVel.x, baseVel.y, pendingJump2, snk2MovePeriod);
-			lastSentVelocity2 = currentVel;
+			lastSentVelocity2 = baseVel;  // Store BASE velocity for comparison
 			pendingJump2 = false;  // Clear jump flag after sending
 		}
 		
@@ -769,7 +772,6 @@ void Game::UpdateNetworking()
 		float inputHeartbeatElapsed = std::chrono::duration<float>(now - lastInputHeartbeat).count();
 		if (inputHeartbeatElapsed > 0.5f) // Send input heartbeat every 500ms
 		{
-			Location baseVel = snk2.GetBaseVelocity();
 			networkMgr.SendInput(baseVel.x, baseVel.y, false, snk2MovePeriod);
 			lastInputHeartbeat = now;
 		}
@@ -787,6 +789,7 @@ void Game::ApplyRemoteInput(const InputMessage& msg)
 		// Apply jump if client is jumping
 		if (msg.jump)
 		{
+			OutputDebugStringA("HOST: Received jump=TRUE, calling JumpOn()\n");
 			snk2.JumpOn();
 		}
 	}
