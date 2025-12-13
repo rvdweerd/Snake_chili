@@ -99,9 +99,12 @@ private:
 	static constexpr float networkSyncPeriod = 0.05f; // 20Hz sync rate
 	Location lastSentVelocity1 = {0, 0};
 	Location lastSentVelocity2 = {0, 0};
+	float lastSentMovePeriod2 = 0.0f;  // Track last sent speed for client
 	bool initialSyncSent = false;  // Track if we've sent initial full state
 	bool pendingJump2 = false;     // Track if client wants to jump (for network sync)
-	
+	bool pendingSpeedChange2 = false;  // Track if client changed speed (Q/Z keys)
+	bool pendingStall2 = false;    // Track if client wants to stall (E key)
+
 	// Network state management
 	NetworkState networkState = NetworkState::Disabled;
 	bool networkPeerDetected = false;
