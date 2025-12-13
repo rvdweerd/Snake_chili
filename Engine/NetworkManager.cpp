@@ -629,8 +629,22 @@ void NetworkManager::NetworkThreadFunc()
 	                       ", GameStateSnapshot=" + std::to_string(sizeof(GameStateSnapshot)) + "\n";
 	OutputDebugStringA(sizesMsg.c_str());
 	
+	// Log periodic status to verify thread is running
+	auto lastStatusLog = std::chrono::steady_clock::now();
+	
 	while (pImpl->running)
 	{
+		// Log thread status every 5 seconds to verify it's running
+		auto now = std::chrono::steady_clock::now();
+		if (std::chrono::duration_cast<std::chrono::seconds>(now - lastStatusLog).count() >= 5)
+		{
+			std::string statusMsg = "NetworkThreadFunc: Thread alive, connectionState=" + 
+			                        std::to_string(static_cast<int>(pImpl->connectionState.load())) +
+			                        ", hasPeer=" + std::string(pImpl->hasPeer ? "TRUE" : "FALSE") + "\n";
+			OutputDebugStringA(statusMsg.c_str());
+			lastStatusLog = now;
+		}
+		
 		if (pImpl->connectionState != ConnectionState::Connected)
 		{
 			std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -647,17 +661,17 @@ void NetworkManager::NetworkThreadFunc()
 			pImpl->lastReceiveTime = std::chrono::steady_clock::now();
 			lastAliveCheck = pImpl->lastReceiveTime;
 
-			// Log every received packet for debugging (first few only to avoid spam)
+			// Log every received packet for debugging
 			static int totalPackets = 0;
 			totalPackets++;
-			if (totalPackets <= 20 || totalPackets % 100 == 0)
-			{
-				char fromIp[INET_ADDRSTRLEN];
-				inet_ntop(AF_INET, &from.sin_addr, fromIp, sizeof(fromIp));
-				std::string recvMsg = "NetworkThreadFunc: Packet #" + std::to_string(totalPackets) + 
-				                      " received " + std::to_string(received) + " bytes from " + fromIp + "\n";
-				OutputDebugStringA(recvMsg.c_str());
-			}
+			
+			char fromIp[INET_ADDRSTRLEN];
+			inet_ntop(AF_INET, &from.sin_addr, fromIp, sizeof(fromIp));
+			uint16_t fromPort = ntohs(from.sin_port);
+			std::string recvMsg = "NetworkThreadFunc: Packet #" + std::to_string(totalPackets) + 
+			                      " received " + std::to_string(received) + " bytes from " + 
+			                      fromIp + ":" + std::to_string(fromPort) + "\n";
+			OutputDebugStringA(recvMsg.c_str());
 
 			// Check magic number
 			uint32_t* magic = (uint32_t*)buffer;
@@ -671,6 +685,7 @@ void NetworkManager::NetworkThreadFunc()
 			// Process based on message size
 			if (received == sizeof(InputMessage))
 			{
+				OutputDebugStringA("NetworkThreadFunc: Processing as InputMessage\n");
 				InputMessage msg = *(InputMessage*)buffer;
 				msg.sequence = ntohl(msg.sequence);
 				
@@ -704,35 +719,26 @@ void NetworkManager::NetworkThreadFunc()
 			{
 				// Heartbeat received - connection is alive
 				static int heartbeatCount = 0;
-				if (++heartbeatCount % 10 == 0)
-				{
-					OutputDebugStringA("NetworkThreadFunc: Heartbeat received\n");
-				}
+				heartbeatCount++;
+				std::string hbMsg = "NetworkThreadFunc: Heartbeat #" + std::to_string(heartbeatCount) + " received\n";
+				OutputDebugStringA(hbMsg.c_str());
 			}
 			else if (received == sizeof(BoardDelta))
 			{
-				// Board delta received - incremental board update
+				OutputDebugStringA("NetworkThreadFunc: Processing as BoardDelta\n");
+				// ...existing BoardDelta code...
 				static int deltaCount = 0;
 				deltaCount++;
 				
 				BoardDelta delta = *(BoardDelta*)buffer;
 				delta.sequence = ntohl(delta.sequence);
 				
-				// Validate change count
 				if (delta.changeCount > 20) delta.changeCount = 20;
 				
-				// Convert change locations FROM network byte order
 				for (int i = 0; i < delta.changeCount; i++)
 				{
 					delta.changes[i].x = ntohs(delta.changes[i].x);
 					delta.changes[i].y = ntohs(delta.changes[i].y);
-				}
-				
-				if (deltaCount % 20 == 0)
-				{
-					std::string debugMsg = "NetworkThreadFunc: Received BoardDelta #" + std::to_string(deltaCount) + 
-					                       " with " + std::to_string(delta.changeCount) + " changes\n";
-					OutputDebugStringA(debugMsg.c_str());
 				}
 				
 				std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
@@ -743,24 +749,22 @@ void NetworkManager::NetworkThreadFunc()
 			}
 			else if (received == sizeof(SnakeStateUpdate))
 			{
-				// Lightweight snake-only update (no board data)
+				OutputDebugStringA("NetworkThreadFunc: Processing as SnakeStateUpdate\n");
+				// ...existing SnakeStateUpdate code...
 				static int snakeUpdateCount = 0;
 				snakeUpdateCount++;
 				
 				SnakeStateUpdate update = *(SnakeStateUpdate*)buffer;
 				update.sequence = ntohl(update.sequence);
 				
-				// Convert counts
 				update.snake1SegmentCount = ntohs(update.snake1SegmentCount);
 				update.snake2SegmentCount = ntohs(update.snake2SegmentCount);
 				update.player1Score = ntohs(update.player1Score);
 				update.player2Score = ntohs(update.player2Score);
 				
-				// Bounds validation
 				if (update.snake1SegmentCount > 500) update.snake1SegmentCount = 500;
 				if (update.snake2SegmentCount > 500) update.snake2SegmentCount = 500;
 				
-				// Convert segment positions
 				for (int i = 0; i < update.snake1SegmentCount; i++)
 				{
 					update.snake1Segments[i].x = ntohs(update.snake1Segments[i].x);
@@ -773,7 +777,6 @@ void NetworkManager::NetworkThreadFunc()
 					update.snake2Segments[i].y = ntohs(update.snake2Segments[i].y);
 				}
 				
-				// Create a GameStateSnapshot from the update (without board data)
 				GameStateSnapshot state{};
 				state.sequence = update.sequence;
 				state.snake1SegmentCount = update.snake1SegmentCount;
@@ -794,12 +797,6 @@ void NetworkManager::NetworkThreadFunc()
 				state.poisonCount = 0;
 				state.barrierCount = 0;
 				
-				if (snakeUpdateCount % 60 == 0)
-				{
-					std::string debugMsg = "NetworkThreadFunc: Received SnakeStateUpdate #" + std::to_string(snakeUpdateCount) + "\n";
-					OutputDebugStringA(debugMsg.c_str());
-				}
-				
 				std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
 				if (pImpl->onGameStateReceived)
 				{
@@ -808,13 +805,13 @@ void NetworkManager::NetworkThreadFunc()
 			}
 			else if (received == sizeof(GameStateSnapshot))
 			{
+				OutputDebugStringA("NetworkThreadFunc: Processing as GameStateSnapshot\n");
 				static int stateCount = 0;
 				stateCount++;
 				
 				GameStateSnapshot state = *(GameStateSnapshot*)buffer;
 				state.sequence = ntohl(state.sequence);
 				
-				// CRITICAL FIX: Convert all multi-byte fields FROM network byte order
 				state.snake1SegmentCount = ntohs(state.snake1SegmentCount);
 				state.snake2SegmentCount = ntohs(state.snake2SegmentCount);
 				state.player1Score = ntohs(state.player1Score);
@@ -823,14 +820,12 @@ void NetworkManager::NetworkThreadFunc()
 				state.poisonCount = ntohs(state.poisonCount);
 				state.barrierCount = ntohs(state.barrierCount);
 				
-				// BOUNDS VALIDATION: Clamp counts to prevent buffer overruns from malformed packets
 				if (state.snake1SegmentCount > 500) state.snake1SegmentCount = 500;
 				if (state.snake2SegmentCount > 500) state.snake2SegmentCount = 500;
 				if (state.foodCount > 100) state.foodCount = 100;
 				if (state.poisonCount > 100) state.poisonCount = 100;
 				if (state.barrierCount > 200) state.barrierCount = 200;
 				
-				// Convert all segment positions FROM network byte order
 				for (int i = 0; i < state.snake1SegmentCount && i < 500; i++)
 				{
 					state.snake1Segments[i].x = ntohs(state.snake1Segments[i].x);
@@ -843,7 +838,6 @@ void NetworkManager::NetworkThreadFunc()
 					state.snake2Segments[i].y = ntohs(state.snake2Segments[i].y);
 				}
 				
-				// Convert food/poison/barrier locations FROM network byte order
 				for (int i = 0; i < state.foodCount && i < 100; i++)
 				{
 					state.foodLocations[i].x = ntohs(state.foodLocations[i].x);
@@ -862,20 +856,6 @@ void NetworkManager::NetworkThreadFunc()
 					state.barrierLocations[i].y = ntohs(state.barrierLocations[i].y);
 				}
 				
-				// DEBUG: Log raw packet data AFTER conversion
-				if (stateCount % 60 == 0)
-				{
-					std::string debugMsg = "NetworkThreadFunc: Received GameStateSnapshot #" + std::to_string(stateCount) + 
-					                       ", size=" + std::to_string(received) + " bytes\n";
-					OutputDebugStringA(debugMsg.c_str());
-					
-					std::string dataMsg = "  CONVERTED data - Snake1 segments: " + std::to_string(state.snake1SegmentCount) + 
-					                      ", Snake2 segments: " + std::to_string(state.snake2SegmentCount) + 
-					                      ", gameOver: " + std::to_string(state.gameOver) + "\n";
-					OutputDebugStringA(dataMsg.c_str());
-				}
-				
-				// Invoke callback
 				{
 					std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
 					if (pImpl->onGameStateReceived)
@@ -890,14 +870,23 @@ void NetworkManager::NetworkThreadFunc()
 				OutputDebugStringA(debugMsg.c_str());
 			}
 		}
+		else if (received == SOCKET_ERROR)
+		{
+			int err = WSAGetLastError();
+			// WSAEWOULDBLOCK (10035) is normal for non-blocking socket with no data
+			if (err != WSAEWOULDBLOCK)
+			{
+				std::string errMsg = "NetworkThreadFunc: recvfrom error: " + std::to_string(err) + "\n";
+				OutputDebugStringA(errMsg.c_str());
+			}
+		}
 
 		// Check for timeout
-		auto now = std::chrono::steady_clock::now();
-		auto timeSinceLastReceive = std::chrono::duration_cast<std::chrono::seconds>(now - lastAliveCheck).count();
+		auto timeoutNow = std::chrono::steady_clock::now();
+		auto timeSinceLastReceive = std::chrono::duration_cast<std::chrono::seconds>(timeoutNow - lastAliveCheck).count();
 		
 		if (timeSinceLastReceive > connectionTimeoutSeconds)
 		{
-			// Connection timeout detected
 			if (pImpl->hasPeer)
 			{
 				pImpl->hasPeer = false;
@@ -912,11 +901,10 @@ void NetworkManager::NetworkThreadFunc()
 				}
 			}
 			
-			// Reset timer to avoid repeated callbacks
-			lastAliveCheck = now;
+			lastAliveCheck = timeoutNow;
 		}
 
-		std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60Hz
+		std::this_thread::sleep_for(std::chrono::milliseconds(16));
 	}
 	
 	OutputDebugStringA("NetworkThreadFunc: Exiting\n");
