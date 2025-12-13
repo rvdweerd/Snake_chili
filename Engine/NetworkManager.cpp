@@ -276,8 +276,14 @@ void NetworkManager::SendStartCommand()
 	cmd.magic = GAME_MAGIC;
 	cmd.commandType = 0; // start game
 
-	sendto(pImpl->gameSock, (char*)&cmd, sizeof(cmd), 0,
-		   (sockaddr*)&pImpl->peerAddr, sizeof(pImpl->peerAddr));
+	// Send multiple times for reliability (UDP can drop packets)
+	for (int i = 0; i < 3; i++)
+	{
+		sendto(pImpl->gameSock, (char*)&cmd, sizeof(cmd), 0,
+			   (sockaddr*)&pImpl->peerAddr, sizeof(pImpl->peerAddr));
+	}
+	
+	OutputDebugStringA("SendStartCommand: Sent START command (3x for reliability)\n");
 }
 
 void NetworkManager::SendHeartbeat()
@@ -289,6 +295,7 @@ void NetworkManager::SendHeartbeat()
 
 	Heartbeat hb{};
 	hb.magic = GAME_MAGIC;
+	hb.messageType = 0xFF;  // Distinguish from StartCommand
 	hb.timestamp = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
 		std::chrono::steady_clock::now().time_since_epoch()).count());
 

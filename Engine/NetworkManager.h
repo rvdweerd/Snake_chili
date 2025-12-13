@@ -73,7 +73,7 @@ public:
 	// Set callback for received board delta (client uses this)
 	void SetOnBoardDeltaReceived(std::function<void(const BoardDelta&)> callback);
 
-	// Set callback for game start command (client uses this)
+	// Set callback for received start game command (client uses this)
 	void SetOnGameStartReceived(std::function<void()> callback);
 
 	// Set callback for connection established
@@ -150,6 +150,8 @@ struct StartCommand
 struct Heartbeat
 {
 	uint32_t magic;
+	uint8_t messageType;  // 0xFF to distinguish from StartCommand (which has 0)
+	char padding[3];
 	uint32_t timestamp; // For ping calculation if needed
 };
 
