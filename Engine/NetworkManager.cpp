@@ -267,23 +267,54 @@ void NetworkManager::SendGameState(const GameStateSnapshot& state)
 
 void NetworkManager::SendStartCommand()
 {
-	if (!pImpl->hasPeer || pImpl->gameSock == INVALID_SOCKET)
+	OutputDebugStringA("SendStartCommand: Entering function\n");
+	
+	if (!pImpl->hasPeer)
 	{
+		OutputDebugStringA("SendStartCommand: ERROR - hasPeer is FALSE, cannot send!\n");
 		return;
 	}
+	
+	if (pImpl->gameSock == INVALID_SOCKET)
+	{
+		OutputDebugStringA("SendStartCommand: ERROR - gameSock is INVALID_SOCKET!\n");
+		return;
+	}
+
+	// Log peer address for debugging
+	char peerIp[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &pImpl->peerAddr.sin_addr, peerIp, sizeof(peerIp));
+	uint16_t peerPort = ntohs(pImpl->peerAddr.sin_port);
+	std::string addrMsg = "SendStartCommand: Sending to peer " + std::string(peerIp) + ":" + std::to_string(peerPort) + "\n";
+	OutputDebugStringA(addrMsg.c_str());
 
 	StartCommand cmd{};
 	cmd.magic = GAME_MAGIC;
 	cmd.commandType = 0; // start game
 
+	std::string sizeMsg = "SendStartCommand: StartCommand size = " + std::to_string(sizeof(cmd)) + " bytes\n";
+	OutputDebugStringA(sizeMsg.c_str());
+
 	// Send multiple times for reliability (UDP can drop packets)
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < 5; i++)  // Increased to 5 for better reliability
 	{
-		sendto(pImpl->gameSock, (char*)&cmd, sizeof(cmd), 0,
+		int result = sendto(pImpl->gameSock, (char*)&cmd, sizeof(cmd), 0,
 			   (sockaddr*)&pImpl->peerAddr, sizeof(pImpl->peerAddr));
+		
+		if (result == SOCKET_ERROR)
+		{
+			int err = WSAGetLastError();
+			std::string errMsg = "SendStartCommand: sendto failed with error " + std::to_string(err) + "\n";
+			OutputDebugStringA(errMsg.c_str());
+		}
+		else
+		{
+			std::string successMsg = "SendStartCommand: Sent " + std::to_string(result) + " bytes (attempt " + std::to_string(i+1) + ")\n";
+			OutputDebugStringA(successMsg.c_str());
+		}
 	}
 	
-	OutputDebugStringA("SendStartCommand: Sent START command (3x for reliability)\n");
+	OutputDebugStringA("SendStartCommand: Completed sending START command (5x for reliability)\n");
 }
 
 void NetworkManager::SendHeartbeat()
@@ -367,10 +398,20 @@ void NetworkManager::SetOnPeerDetected(std::function<void()> callback)
 
 void NetworkManager::AcceptConnection()
 {
+	OutputDebugStringA("AcceptConnection: Entering function\n");
+	
 	if (!pImpl->hasPendingPeer)
 	{
+		OutputDebugStringA("AcceptConnection: ERROR - hasPendingPeer is FALSE!\n");
 		return;
 	}
+
+	// Log pending peer address before copying
+	char pendingIp[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &pImpl->pendingPeerAddr.sin_addr, pendingIp, sizeof(pendingIp));
+	uint16_t pendingPort = ntohs(pImpl->pendingPeerAddr.sin_port);
+	std::string pendingMsg = "AcceptConnection: Pending peer address: " + std::string(pendingIp) + ":" + std::to_string(pendingPort) + "\n";
+	OutputDebugStringA(pendingMsg.c_str());
 
 	// Move pending peer to active peer
 	pImpl->peerAddr = pImpl->pendingPeerAddr;
@@ -378,11 +419,25 @@ void NetworkManager::AcceptConnection()
 	pImpl->hasPendingPeer = false;
 	pImpl->connectionState = ConnectionState::Connected;
 
+	// Log active peer address after copying
+	char activeIp[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &pImpl->peerAddr.sin_addr, activeIp, sizeof(activeIp));
+	uint16_t activePort = ntohs(pImpl->peerAddr.sin_port);
+	std::string activeMsg = "AcceptConnection: Active peer address set to: " + std::string(activeIp) + ":" + std::to_string(activePort) + "\n";
+	OutputDebugStringA(activeMsg.c_str());
+
+	OutputDebugStringA("AcceptConnection: hasPeer = TRUE, connectionState = Connected\n");
+
 	// Notify connection established
 	std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
 	if (pImpl->onConnected)
 	{
+		OutputDebugStringA("AcceptConnection: Calling onConnected callback\n");
 		pImpl->onConnected();
+	}
+	else
+	{
+		OutputDebugStringA("AcceptConnection: WARNING - onConnected callback is NULL!\n");
 	}
 }
 
@@ -567,6 +622,13 @@ void NetworkManager::NetworkThreadFunc()
 	
 	OutputDebugStringA("NetworkThreadFunc: Started\n");
 	
+	// Log expected message sizes for debugging
+	std::string sizesMsg = "NetworkThreadFunc: Expected sizes - StartCommand=" + std::to_string(sizeof(StartCommand)) +
+	                       ", Heartbeat=" + std::to_string(sizeof(Heartbeat)) +
+	                       ", InputMessage=" + std::to_string(sizeof(InputMessage)) +
+	                       ", GameStateSnapshot=" + std::to_string(sizeof(GameStateSnapshot)) + "\n";
+	OutputDebugStringA(sizesMsg.c_str());
+	
 	while (pImpl->running)
 	{
 		if (pImpl->connectionState != ConnectionState::Connected)
@@ -585,11 +647,24 @@ void NetworkManager::NetworkThreadFunc()
 			pImpl->lastReceiveTime = std::chrono::steady_clock::now();
 			lastAliveCheck = pImpl->lastReceiveTime;
 
+			// Log every received packet for debugging (first few only to avoid spam)
+			static int totalPackets = 0;
+			totalPackets++;
+			if (totalPackets <= 20 || totalPackets % 100 == 0)
+			{
+				char fromIp[INET_ADDRSTRLEN];
+				inet_ntop(AF_INET, &from.sin_addr, fromIp, sizeof(fromIp));
+				std::string recvMsg = "NetworkThreadFunc: Packet #" + std::to_string(totalPackets) + 
+				                      " received " + std::to_string(received) + " bytes from " + fromIp + "\n";
+				OutputDebugStringA(recvMsg.c_str());
+			}
+
 			// Check magic number
 			uint32_t* magic = (uint32_t*)buffer;
 			if (*magic != GAME_MAGIC)
 			{
-				OutputDebugStringA("NetworkThreadFunc: Invalid magic number\n");
+				std::string magicMsg = "NetworkThreadFunc: Invalid magic number 0x" + std::to_string(*magic) + " (expected 0x" + std::to_string(GAME_MAGIC) + ")\n";
+				OutputDebugStringA(magicMsg.c_str());
 				continue;
 			}
 
@@ -607,13 +682,22 @@ void NetworkManager::NetworkThreadFunc()
 			}
 			else if (received == sizeof(StartCommand))
 			{
-				OutputDebugStringA("NetworkThreadFunc: Received StartCommand\n");
+				OutputDebugStringA("NetworkThreadFunc: *** RECEIVED StartCommand! ***\n");
 				StartCommand cmd = *(StartCommand*)buffer;
+				
+				std::string cmdMsg = "NetworkThreadFunc: StartCommand commandType = " + std::to_string(cmd.commandType) + "\n";
+				OutputDebugStringA(cmdMsg.c_str());
 				
 				std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
 				if (pImpl->onGameStartReceived)
 				{
+					OutputDebugStringA("NetworkThreadFunc: Calling onGameStartReceived callback\n");
 					pImpl->onGameStartReceived();
+					OutputDebugStringA("NetworkThreadFunc: onGameStartReceived callback completed\n");
+				}
+				else
+				{
+					OutputDebugStringA("NetworkThreadFunc: ERROR - onGameStartReceived callback is NULL!\n");
 				}
 			}
 			else if (received == sizeof(Heartbeat))
@@ -690,7 +774,6 @@ void NetworkManager::NetworkThreadFunc()
 				}
 				
 				// Create a GameStateSnapshot from the update (without board data)
-				// The callback will handle applying just the snake state
 				GameStateSnapshot state{};
 				state.sequence = update.sequence;
 				state.snake1SegmentCount = update.snake1SegmentCount;
@@ -707,7 +790,6 @@ void NetworkManager::NetworkThreadFunc()
 				state.player2Score = update.player2Score;
 				state.gameOver = update.gameOver;
 				state.crashedPlayer = update.crashedPlayer;
-				// Board counts are 0 - this signals to not update board
 				state.foodCount = 0;
 				state.poisonCount = 0;
 				state.barrierCount = 0;
@@ -796,18 +878,9 @@ void NetworkManager::NetworkThreadFunc()
 				// Invoke callback
 				{
 					std::lock_guard<std::mutex> lock(pImpl->callbackMutex);
-					if (!pImpl->onGameStateReceived)
-					{
-						OutputDebugStringA("NetworkThreadFunc: ERROR - onGameStateReceived callback is NULL!\n");
-					}
-					else
+					if (pImpl->onGameStateReceived)
 					{
 						pImpl->onGameStateReceived(state);
-						
-						if (stateCount % 60 == 0)
-						{
-							OutputDebugStringA("NetworkThreadFunc: Callback invoked successfully\n");
-						}
 					}
 				}
 			}
