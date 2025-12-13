@@ -112,22 +112,30 @@ Location Snake::GetNextHeadLocation(const Location& delta, Board& brd) const
 {
 	Location new_loc ( segments[0].loc + delta );
 
-	if (new_loc.x < 0)
+	// Handle X-axis wrapping (use modulo for multi-tile jumps)
+	int boardWidth = brd.GetWidth();
+	int boardHeight = brd.GetHeight();
+	
+	// Wrap X coordinate
+	while (new_loc.x < 0)
 	{
-		new_loc.x = new_loc.x + brd.GetWidth();
+		new_loc.x += boardWidth;
 	}
-	else if (new_loc.x >= brd.GetWidth())
+	while (new_loc.x >= boardWidth)
 	{
-		new_loc.x = new_loc.x - brd.GetWidth();
+		new_loc.x -= boardWidth;
 	}
-	else if (new_loc.y < 0)
+	
+	// Wrap Y coordinate
+	while (new_loc.y < 0)
 	{
-		new_loc.y = new_loc.y + brd.GetHeight();
+		new_loc.y += boardHeight;
 	}
-	else if (new_loc.y >= brd.GetHeight())
+	while (new_loc.y >= boardHeight)
 	{
-		new_loc.y = new_loc.y - brd.GetHeight();
+		new_loc.y -= boardHeight;
 	}
+	
 	return new_loc;
 }
 
@@ -233,6 +241,18 @@ void Snake::SetSegments(const Location* locations, int segmentCount)
 		OutputDebugStringA(errorMsg.c_str());
 	}
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
