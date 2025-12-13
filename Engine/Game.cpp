@@ -334,6 +334,9 @@ void Game::UpdateModel()
 			// Move snake 1 if its timer has elapsed
 			if (snk1MoveCounter >= snk1MovePeriod)
 			{
+				// Apply any pending jump before calculating new position
+				snk1.ApplyPendingJump();
+				
 				const Location new_loc1 = snk1.GetNextHeadLocation(snk1.GetSnakeVelocity(), brd);
 
 				// Handle food and poison interactions for snake 1
@@ -379,7 +382,7 @@ void Game::UpdateModel()
 				if (!gameOver)
 				{
 					snk1.MoveTo(new_loc1);
-					snk1.JumpOff();
+					// No need for JumpOff() - ApplyPendingJump() auto-resets
 				}
 
 				snk1MoveCounter = 0;
@@ -388,6 +391,9 @@ void Game::UpdateModel()
 			// Move snake 2 if its timer has elapsed (if two players)
 			if (gVar.numPlayers == 2 && snk2MoveCounter >= snk2MovePeriod)
 			{
+				// Apply any pending jump before calculating new position
+				snk2.ApplyPendingJump();
+				
 				const Location new_loc2 = snk2.GetNextHeadLocation(snk2.GetSnakeVelocity(), brd);
 
 				// Handle food and poison interactions for snake 2
@@ -440,7 +446,7 @@ void Game::UpdateModel()
 				if (!gameOver)
 				{
 					snk2.MoveTo(new_loc2);
-					snk2.JumpOff();
+					// No need for JumpOff() - ApplyPendingJump() auto-resets
 				}
 
 				snk2MoveCounter = 0;
@@ -802,15 +808,13 @@ void Game::ApplyRemoteInput(const InputMessage& msg)
 		snk2.SetSnakeVelocity({ msg.vx, msg.vy });
 		snk2MovePeriod = msg.movePeriod;
 		
-		// Apply jump if client is jumping - use edge detection to prevent repeated jumps
-		// Only trigger jump if we receive jump=TRUE and we weren't already processing a jump
-		static bool lastReceivedJump = false;
-		if (msg.jump && !lastReceivedJump)
+		// Queue jump if client requested one
+		// JumpOn() now queues a jump that will be consumed on next move
+		// Multiple calls before a move just keep the pending flag set (idempotent)
+		if (msg.jump)
 		{
-			OutputDebugStringA("HOST: Received jump=TRUE (edge detected), calling JumpOn()\n");
 			snk2.JumpOn();
 		}
-		lastReceivedJump = msg.jump;
 	}
 }
 

@@ -25,8 +25,10 @@ public:
 	bool IsInTileExceptEnd(const Location& target) const;
 	bool Snake::IsInTile(const Location& target) const;
 	void Reset();
-	void JumpOn();
-	void JumpOff();
+	void JumpOn();                    // Queue a jump for next move
+	void JumpOff();                   // Legacy - no longer used
+	void ApplyPendingJump();          // Apply and consume pending jump (call before move)
+	bool HasPendingJump() const { return pendingJump; }  // Check if jump is queued
 	bool IsMoving() const;
 	Location GetCurrentHeadLocation() const;
 	Location GetNextHeadLocation(const Location& delta, Board& brd) const;
@@ -46,7 +48,7 @@ private:
 	static constexpr int nSegmentsMax = 2000;
 	static constexpr int growth = 1;
 	int jumpMultiplier = 1;
-	//Segment segments[nSegmentsMax];
+	bool pendingJump = false;         // Queued jump waiting to be consumed
 	std::vector<Segment> segments;
 	Location snakeVelocity;
 };
