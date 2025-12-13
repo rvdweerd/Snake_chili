@@ -176,7 +176,7 @@ NetworkRole NetworkManager::GetRole() const
 	return pImpl->role;
 }
 
-void NetworkManager::SendInput(int8_t vx, int8_t vy, bool jump, float movePeriod)
+void NetworkManager::SendInput(int8_t vx, int8_t vy, uint8_t actions, float movePeriod)
 {
 	if (!pImpl->hasPeer || pImpl->gameSock == INVALID_SOCKET)
 	{
@@ -188,7 +188,7 @@ void NetworkManager::SendInput(int8_t vx, int8_t vy, bool jump, float movePeriod
 	msg.sequence = htonl(pImpl->sendSequence++);
 	msg.vx = vx;
 	msg.vy = vy;
-	msg.jump = jump ? 1 : 0;
+	msg.actions = actions;
 	msg.movePeriod = movePeriod;
 
 	sendto(pImpl->gameSock, (char*)&msg, sizeof(msg), 0, 

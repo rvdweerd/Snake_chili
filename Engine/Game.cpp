@@ -293,26 +293,53 @@ void Game::UpdateModel()
 			
 			if (shouldControlSnake2)
 			{
+				// Direction controls (state-based, continuous)
 				if (wnd.kbd.KeyIsPressed('D')) { snk2.SetSnakeVelocity({ 1, 0 }); }  // move right
 				if (wnd.kbd.KeyIsPressed('A')) { snk2.SetSnakeVelocity({ -1, 0 }); } // move left
 				if (wnd.kbd.KeyIsPressed('X')) { snk2.SetSnakeVelocity({ 0, 1 }); }  // move down
 				if (wnd.kbd.KeyIsPressed('W')) { snk2.SetSnakeVelocity({ 0, -1 }); } // move up
-				if (wnd.kbd.KeyIsPressed('Z')) { snk2MovePeriod *= 1.05f; pendingSpeedChange2 = true; }  // slower
-				if (wnd.kbd.KeyIsPressed('Q')) { snk2MovePeriod /= 1.05f; pendingSpeedChange2 = true; }  // faster
-				if (wnd.kbd.KeyIsPressed('E')) { snk2.SetSnakeVelocity({0,0}); pendingStall2 = true; }   // stall
 				
-				// Jump key with edge detection - only trigger on key-down, not while held
+				// Speed slower (Z) - edge detection for one-shot action
+				bool slowerKeyPressed = wnd.kbd.KeyIsPressed('Z');
+				if (slowerKeyPressed && !slowerKeyWasPressed2)
+				{
+					snk2MovePeriod *= 1.05f;
+					if (networkingEnabled) { pendingActions2 |= InputAction::Slower; }
+				}
+				slowerKeyWasPressed2 = slowerKeyPressed;
+				
+				// Speed faster (Q) - edge detection for one-shot action
+				bool fasterKeyPressed = wnd.kbd.KeyIsPressed('Q');
+				if (fasterKeyPressed && !fasterKeyWasPressed2)
+				{
+					snk2MovePeriod /= 1.05f;
+					if (networkingEnabled) { pendingActions2 |= InputAction::Faster; }
+				}
+				fasterKeyWasPressed2 = fasterKeyPressed;
+				
+				// Stall (E) - edge detection for one-shot action
+				bool stallKeyPressed = wnd.kbd.KeyIsPressed('E');
+				if (stallKeyPressed && !stallKeyWasPressed2)
+				{
+					snk2.SetSnakeVelocity({0, 0});
+					if (networkingEnabled) { pendingActions2 |= InputAction::Stall; }
+				}
+				stallKeyWasPressed2 = stallKeyPressed;
+				
+				// Jump (S) - edge detection for one-shot action
 				bool jumpKeyPressed = wnd.kbd.KeyIsPressed('S');
 				if (jumpKeyPressed && !jumpKeyWasPressed2)
 				{
-					// Key just pressed this frame (rising edge)
 					if (!networkingEnabled)
 					{
 						snk2.JumpOn();
 					}
-					pendingJump2 = true;  // flag for network sync
+					else
+					{
+						pendingActions2 |= InputAction::Jump;
+					}
 				}
-				jumpKeyWasPressed2 = jumpKeyPressed;  // Remember state for next frame
+				jumpKeyWasPressed2 = jumpKeyPressed;
 			}
 		}
 
@@ -758,35 +785,29 @@ void Game::UpdateNetworking()
 	}
 	else
 	{
-		// CLIENT: Send snake 2 input to host whenever it changes or jump is pending
+		// CLIENT: Send snake 2 input to host whenever it changes or actions are pending
 		Location baseVel = snk2.GetBaseVelocity();
 		bool velocityChanged = (baseVel.x != lastSentVelocity2.x || 
 		                        baseVel.y != lastSentVelocity2.y);
-		bool speedChanged = (snk2MovePeriod != lastSentMovePeriod2);
-		bool shouldSendInput = velocityChanged || pendingJump2 || pendingSpeedChange2 || pendingStall2;
+		bool hasActions = (pendingActions2 != InputAction::None);
+		bool shouldSendInput = velocityChanged || hasActions;
 		
 		if (shouldSendInput)
 		{
-			// DEBUG: Log when sending jump
-			if (pendingJump2)
-			{
-				OutputDebugStringA("CLIENT: Sending jump=TRUE to host\n");
-			}
-			if (pendingSpeedChange2)
-			{
-				OutputDebugStringA("CLIENT: Sending speed change to host\n");
-			}
-			if (pendingStall2)
-			{
-				OutputDebugStringA("CLIENT: Sending stall command to host\n");
-			}
+			// DEBUG: Log actions being sent
+			if (pendingActions2 & InputAction::Jump)
+				OutputDebugStringA("CLIENT: Sending ACTION_JUMP\n");
+			if (pendingActions2 & InputAction::Faster)
+				OutputDebugStringA("CLIENT: Sending ACTION_FASTER\n");
+			if (pendingActions2 & InputAction::Slower)
+				OutputDebugStringA("CLIENT: Sending ACTION_SLOWER\n");
+			if (pendingActions2 & InputAction::Stall)
+				OutputDebugStringA("CLIENT: Sending ACTION_STALL\n");
 			
-			networkMgr.SendInput(baseVel.x, baseVel.y, pendingJump2, snk2MovePeriod);
+			networkMgr.SendInput(baseVel.x, baseVel.y, pendingActions2, snk2MovePeriod);
 			lastSentVelocity2 = baseVel;
 			lastSentMovePeriod2 = snk2MovePeriod;
-			pendingJump2 = false;
-			pendingSpeedChange2 = false;
-			pendingStall2 = false;
+			pendingActions2 = InputAction::None;  // Clear after sending
 		}
 		
 		// Also send periodically to keep connection alive (input also serves as heartbeat)
@@ -794,7 +815,7 @@ void Game::UpdateNetworking()
 		float inputHeartbeatElapsed = std::chrono::duration<float>(now - lastInputHeartbeat).count();
 		if (inputHeartbeatElapsed > 0.5f) // Send input heartbeat every 500ms
 		{
-			networkMgr.SendInput(baseVel.x, baseVel.y, false, snk2MovePeriod);
+			networkMgr.SendInput(baseVel.x, baseVel.y, InputAction::None, snk2MovePeriod);
 			lastInputHeartbeat = now;
 		}
 	}
@@ -805,16 +826,37 @@ void Game::ApplyRemoteInput(const InputMessage& msg)
 	// Host receives client input and applies it to snake 2
 	if (isNetworkHost)
 	{
+		// Apply direction (state-based, always applied)
 		snk2.SetSnakeVelocity({ msg.vx, msg.vy });
-		snk2MovePeriod = msg.movePeriod;
 		
-		// Queue jump if client requested one
-		// JumpOn() now queues a jump that will be consumed on next move
-		// Multiple calls before a move just keep the pending flag set (idempotent)
-		if (msg.jump)
+		// Process one-shot actions from the action flags
+		if (msg.actions & InputAction::Jump)
 		{
+			OutputDebugStringA("HOST: Received ACTION_JUMP, queuing jump\n");
 			snk2.JumpOn();
 		}
+		
+		if (msg.actions & InputAction::Faster)
+		{
+			OutputDebugStringA("HOST: Received ACTION_FASTER, increasing speed\n");
+			snk2MovePeriod /= 1.05f;
+		}
+		
+		if (msg.actions & InputAction::Slower)
+		{
+			OutputDebugStringA("HOST: Received ACTION_SLOWER, decreasing speed\n");
+			snk2MovePeriod *= 1.05f;
+		}
+		
+		if (msg.actions & InputAction::Stall)
+		{
+			OutputDebugStringA("HOST: Received ACTION_STALL, stopping snake\n");
+			snk2.SetSnakeVelocity({ 0, 0 });
+		}
+		
+		// Note: We don't apply movePeriod from the message anymore for speed changes
+		// because the host now processes speed actions directly
+		// The movePeriod in the message is just for reference/sync verification
 	}
 }
 

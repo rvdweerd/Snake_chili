@@ -49,8 +49,8 @@ public:
 	ConnectionState GetConnectionState() const;
 	NetworkRole GetRole() const;
 
-	// Send local player input to peer
-	void SendInput(int8_t vx, int8_t vy, bool jump, float movePeriod);
+	// Send local player input to peer (actions is a bitfield of InputAction flags)
+	void SendInput(int8_t vx, int8_t vy, uint8_t actions, float movePeriod);
 
 	// Send full game state (host only) - used for initial sync
 	void SendGameState(const GameStateSnapshot& state);
@@ -129,15 +129,25 @@ struct DiscoveryMessage
 	char padding[3];
 };
 
+// Action flags for InputMessage - one-shot actions (edge-triggered)
+namespace InputAction
+{
+	constexpr uint8_t None    = 0;
+	constexpr uint8_t Jump    = 1 << 0;  // Perform a jump
+	constexpr uint8_t Faster  = 1 << 1;  // Speed up one step
+	constexpr uint8_t Slower  = 1 << 2;  // Slow down one step
+	constexpr uint8_t Stall   = 1 << 3;  // Stop moving (set velocity to 0,0)
+}
+
 struct InputMessage
 {
 	uint32_t magic;
 	uint32_t sequence;
-	int8_t vx;
-	int8_t vy;
-	uint8_t jump;      // 0 or 1
+	int8_t vx;              // Direction X (state - continuous)
+	int8_t vy;              // Direction Y (state - continuous)
+	uint8_t actions;        // Bitfield of one-shot actions (InputAction flags)
 	uint8_t padding;
-	float movePeriod;
+	float movePeriod;       // Current move period (for sync, not for actions)
 };
 
 struct StartCommand
