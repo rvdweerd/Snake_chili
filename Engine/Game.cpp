@@ -802,12 +802,15 @@ void Game::ApplyRemoteInput(const InputMessage& msg)
 		snk2.SetSnakeVelocity({ msg.vx, msg.vy });
 		snk2MovePeriod = msg.movePeriod;
 		
-		// Apply jump if client is jumping
-		if (msg.jump)
+		// Apply jump if client is jumping - use edge detection to prevent repeated jumps
+		// Only trigger jump if we receive jump=TRUE and we weren't already processing a jump
+		static bool lastReceivedJump = false;
+		if (msg.jump && !lastReceivedJump)
 		{
-			OutputDebugStringA("HOST: Received jump=TRUE, calling JumpOn()\n");
+			OutputDebugStringA("HOST: Received jump=TRUE (edge detected), calling JumpOn()\n");
 			snk2.JumpOn();
 		}
+		lastReceivedJump = msg.jump;
 	}
 }
 
