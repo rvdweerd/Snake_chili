@@ -1092,35 +1092,21 @@ GameStateSnapshot Game::CreateGameStateSnapshot()
 
 void Game::SerializeSnake(const Snake& snake, SnakeSegment* segments, uint16_t& count, int8_t& vx, int8_t& vy)
 {
-	Location vel = snake.GetSnakeVelocity();
-	vx = vel.x;
-	vy = vel.y;
+	// Use GetBaseVelocity to get velocity WITHOUT jump multiplier
+	// This ensures the client receives the actual movement direction, not the jumped velocity
+	Location vel = snake.GetBaseVelocity();
+	vx = static_cast<int8_t>(vel.x);
+	vy = static_cast<int8_t>(vel.y);
 
 	// Serialize ALL segments (up to max allowed)
 	int segmentCount = snake.GetSegmentCount();
 	count = static_cast<uint16_t>(std::min(segmentCount, 500)); // Cap at max array size
-	
-	// DEBUG: Log what we're serializing
-	static int serializeCount = 0;
-	if (++serializeCount % 40 == 0) // Log occasionally
-	{
-		std::string debugMsg = "SerializeSnake: Actual segment count = " + std::to_string(segmentCount) + 
-		                       ", sending count = " + std::to_string(count) + "\n";
-		OutputDebugStringA(debugMsg.c_str());
-	}
 	
 	for (int i = 0; i < count; i++)
 	{
 		Location loc = snake.GetSegmentLocation(i);
 		segments[i].x = static_cast<int16_t>(loc.x);
 		segments[i].y = static_cast<int16_t>(loc.y);
-	}
-	
-	if (serializeCount % 40 == 0 && count > 0)
-	{
-		std::string posMsg = "  First segment at: (" + std::to_string(segments[0].x) + ", " + 
-		                     std::to_string(segments[0].y) + ")\n";
-		OutputDebugStringA(posMsg.c_str());
 	}
 }
 
