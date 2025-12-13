@@ -104,7 +104,7 @@ private:
 	bool pendingJump2 = false;     // Track if client wants to jump (for network sync)
 	bool pendingSpeedChange2 = false;  // Track if client changed speed (Q/Z keys)
 	bool pendingStall2 = false;    // Track if client wants to stall (E key)
-
+	bool jumpKeyWasPressed2 = false;  // Track previous frame's jump key state for edge detection
 	// Network state management
 	NetworkState networkState = NetworkState::Disabled;
 	bool networkPeerDetected = false;

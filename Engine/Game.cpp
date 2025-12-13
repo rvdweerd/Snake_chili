@@ -300,16 +300,19 @@ void Game::UpdateModel()
 				if (wnd.kbd.KeyIsPressed('Z')) { snk2MovePeriod *= 1.05f; pendingSpeedChange2 = true; }  // slower
 				if (wnd.kbd.KeyIsPressed('Q')) { snk2MovePeriod /= 1.05f; pendingSpeedChange2 = true; }  // faster
 				if (wnd.kbd.KeyIsPressed('E')) { snk2.SetSnakeVelocity({0,0}); pendingStall2 = true; }   // stall
-				if (wnd.kbd.KeyIsPressed('S')) 
-				{ 
-					// In local mode, apply jump directly
-					// In network mode, only set the flag - host will apply the jump
+				
+				// Jump key with edge detection - only trigger on key-down, not while held
+				bool jumpKeyPressed = wnd.kbd.KeyIsPressed('S');
+				if (jumpKeyPressed && !jumpKeyWasPressed2)
+				{
+					// Key just pressed this frame (rising edge)
 					if (!networkingEnabled)
 					{
 						snk2.JumpOn();
 					}
-					pendingJump2 = true;  // flag for network sync (always set for network mode)
+					pendingJump2 = true;  // flag for network sync
 				}
+				jumpKeyWasPressed2 = jumpKeyPressed;  // Remember state for next frame
 			}
 		}
 
